@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="이름과 전화번호를 통해 간편하게 회원가입하고 고유한 멤버십 번호를 발급받을 수 있는 HEXA 포털 서비스입니다.">
+    <title>HEXA - 마이 멤버십 포털</title>
+    
+    <!-- CSS File -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+    <!-- Premium Animated Background Blobs -->
+    <div class="background-glow">
+        <div class="glow-blob blob-1"></div>
+        <div class="glow-blob blob-2"></div>
+        <div class="glow-blob blob-3"></div>
+    </div>
+    
+    <!-- Tech Grid Overlay -->
+    <div class="grid-overlay"></div>
+
+    <!-- Main Container -->
+    <main class="app-container">
+
+        <!-- 1. LOGIN PANEL -->
+        <div id="panel-login" class="view-panel glass-card active">
+            <header class="header-area">
+                <div class="logo-glow">H</div>
+                <h1 class="app-title">HEXA PORTAL</h1>
+                <p class="app-subtitle">이름과 전화번호로 간편하게 로그인하세요</p>
+            </header>
+
+            <form id="form-login" onsubmit="event.preventDefault();">
+                <div class="form-group">
+                    <label for="login-name" class="form-label">이름</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="login-name" class="form-input" placeholder="홍길동" required autocomplete="name">
+                        <i class="fa-regular fa-user input-icon"></i>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="login-phone" class="form-label">전화번호</label>
+                    <div class="input-wrapper">
+                        <input type="tel" id="login-phone" class="form-input" placeholder="010-0000-0000" required autocomplete="tel">
+                        <i class="fa-solid fa-phone input-icon"></i>
+                    </div>
+                </div>
+
+                <button type="submit" id="btn-login-submit" class="btn btn-primary">
+                    <span>로그인</span>
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                </button>
+            </form>
+
+            <div class="auth-switch">
+                아직 계정이 없으신가요? 
+                <a id="go-to-register" class="auth-link">회원가입</a>
+            </div>
+        </div>
+
+        <!-- 2. REGISTER PANEL -->
+        <div id="panel-register" class="view-panel glass-card">
+            <header class="header-area">
+                <div class="logo-glow">H</div>
+                <h1 class="app-title">SIGN UP</h1>
+                <p class="app-subtitle">새로운 계정을 생성하고 고유번호를 발급받으세요</p>
+            </header>
+
+            <form id="form-register" onsubmit="event.preventDefault();">
+                <div class="form-group">
+                    <label for="register-name" class="form-label">이름</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="register-name" class="form-input" placeholder="홍길동" required autocomplete="name">
+                        <i class="fa-regular fa-user input-icon"></i>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="register-phone" class="form-label">전화번호</label>
+                    <div class="input-wrapper">
+                        <input type="tel" id="register-phone" class="form-input" placeholder="010-0000-0000" required autocomplete="tel">
+                        <i class="fa-solid fa-phone input-icon"></i>
+                    </div>
+                </div>
+
+                <button type="submit" id="btn-register-submit" class="btn btn-primary">
+                    <span>회원가입 완료</span>
+                    <i class="fa-solid fa-user-plus"></i>
+                </button>
+            </form>
+
+            <div class="auth-switch">
+                이미 계정이 있으신가요? 
+                <a id="go-to-login" class="auth-link">로그인</a>
+            </div>
+        </div>
+
+        <!-- 3. MY PAGE PANEL -->
+        <div id="panel-mypage" class="view-panel glass-card">
+            <header class="header-area">
+                <h1 class="app-title">MY PORTAL</h1>
+                <p class="app-subtitle">발급된 고유 멤버십 정보를 조회합니다</p>
+            </header>
+
+            <!-- Holographic VIP Card -->
+            <div class="vip-card-container">
+                <div class="vip-card">
+                    <div class="card-top">
+                        <span class="card-brand"><i class="fa-solid fa-cube"></i> HEXA VIP</span>
+                        <div class="card-chip"></div>
+                    </div>
+                    
+                    <div class="card-middle">
+                        <div class="card-code-label">Unique Code</div>
+                        <div class="card-code">
+                            <span id="card-unique-code">00000</span>
+                            <button id="btn-copy-code" class="btn-copy-card" title="고유번호 복사">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="card-bottom">
+                        <div class="card-holder-info">
+                            <div class="card-holder-label">Card Holder</div>
+                            <div class="card-holder-name" id="card-holder-name">HONG GILDONG</div>
+                        </div>
+                        <div class="card-expiry">
+                            <div class="card-expiry-label">Valid Thru</div>
+                            <div class="card-expiry-val">PERMANENT</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Info Details -->
+            <div class="info-section">
+                <div class="info-row">
+                    <span class="info-label">이름</span>
+                    <span class="info-value" id="info-name">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">전화번호</span>
+                    <span class="info-value" id="info-phone">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">고유번호</span>
+                    <span class="info-value" id="info-code" style="font-family: monospace; font-weight: 700; color: var(--color-secondary);">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">가입일자</span>
+                    <span class="info-value" id="info-date">-</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <button id="btn-logout" class="btn btn-secondary">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                <span>로그아웃</span>
+            </button>
+        </div>
+
+    </main>
+
+    <!-- Custom Toast Notifications Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- JS Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
