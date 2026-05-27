@@ -3,110 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="연지홀 공연 좌석을 선택하고 예매자 정보를 입력해 예매를 완료하는 기본 티켓 예매 화면입니다.">
-    <title>연지홀 티켓 예매</title>
-    <link rel="stylesheet" href="style.css?v=5">
+    <meta name="description" content="이름과 전화번호를 통해 간편하게 회원가입하고 고유한 멤버십 번호를 발급받을 수 있는 HEXA 포털 서비스입니다.">
+    <title>HEXA - 마이 멤버십 포털</title>
+    
+    <!-- CSS File -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <main class="page-shell">
-        <header class="top-bar">
-            <div>
-                <p class="eyebrow">HEXA Ticket</p>
-                <h1>연지홀 티켓 예매</h1>
+
+    <!-- Premium Animated Background Blobs -->
+    <div class="background-glow">
+        <div class="glow-blob blob-1"></div>
+        <div class="glow-blob blob-2"></div>
+        <div class="glow-blob blob-3"></div>
+    </div>
+    
+    <!-- Tech Grid Overlay -->
+    <div class="grid-overlay"></div>
+
+    <!-- Main Container -->
+    <main class="app-container">
+
+        <!-- 1. LOGIN PANEL -->
+        <div id="panel-login" class="view-panel glass-card active">
+            <header class="header-area">
+                <div class="logo-glow">H</div>
+                <h1 class="app-title">HEXA PORTAL</h1>
+                <p class="app-subtitle">이름과 전화번호로 간편하게 로그인하세요</p>
+            </header>
+
+            <form id="form-login" onsubmit="event.preventDefault();">
+                <div class="form-group">
+                    <label for="login-name" class="form-label">이름</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="login-name" class="form-input" placeholder="홍길동" required autocomplete="name">
+                        <i class="fa-regular fa-user input-icon"></i>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="login-phone" class="form-label">전화번호</label>
+                    <div class="input-wrapper">
+                        <input type="tel" id="login-phone" class="form-input" placeholder="010-0000-0000" required autocomplete="tel">
+                        <i class="fa-solid fa-phone input-icon"></i>
+                    </div>
+                </div>
+
+                <button type="submit" id="btn-login-submit" class="btn btn-primary">
+                    <span>로그인</span>
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                </button>
+            </form>
+
+            <div class="auth-switch">
+                아직 계정이 없으신가요? 
+                <a id="go-to-register" class="auth-link">회원가입</a>
             </div>
-            <button id="reset-demo" class="ghost-button" type="button">예매 초기화</button>
-        </header>
+        </div>
 
-        <nav class="steps" aria-label="예매 단계">
-            <button class="step is-active" data-step="1" type="button">1 좌석 선택</button>
-            <button class="step" data-step="2" type="button" disabled>2 정보 입력</button>
-            <button class="step" data-step="3" type="button" disabled>3 예매 완료</button>
-        </nav>
+        <!-- 2. REGISTER PANEL -->
+        <div id="panel-register" class="view-panel glass-card">
+            <header class="header-area">
+                <div class="logo-glow">H</div>
+                <h1 class="app-title">SIGN UP</h1>
+                <p class="app-subtitle">새로운 계정을 생성하고 고유번호를 발급받으세요</p>
+            </header>
 
-        <section id="step-seat" class="screen is-active">
-            <div class="seat-layout">
-                <aside class="control-card">
-                    <div class="section-heading compact">
-                        <span>좌석 선택</span>
-                        <h2>원하는 좌석을 선택하세요</h2>
+            <form id="form-register" onsubmit="event.preventDefault();">
+                <div class="form-group">
+                    <label for="register-name" class="form-label">이름</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="register-name" class="form-input" placeholder="홍길동" required autocomplete="name">
+                        <i class="fa-regular fa-user input-icon"></i>
                     </div>
+                </div>
 
-                    <div class="filter-row">
-                        <button class="filter is-active" data-floor="all" type="button">전체</button>
-                        <button class="filter" data-floor="1F" type="button">1층</button>
-                        <button class="filter" data-floor="2F" type="button">2층</button>
+                <div class="form-group">
+                    <label for="register-phone" class="form-label">전화번호</label>
+                    <div class="input-wrapper">
+                        <input type="tel" id="register-phone" class="form-input" placeholder="010-0000-0000" required autocomplete="tel">
+                        <i class="fa-solid fa-phone input-icon"></i>
                     </div>
+                </div>
 
-                    <p id="block-helper" class="block-helper">블록을 먼저 선택하면 해당 블록 좌석이 확대됩니다.</p>
-                    <button id="back-blocks" class="ghost-button full is-hidden" type="button">블록 전체 보기</button>
+                <button type="submit" id="btn-register-submit" class="btn btn-primary">
+                    <span>회원가입 완료</span>
+                    <i class="fa-solid fa-user-plus"></i>
+                </button>
+            </form>
 
-                    <div class="legend">
-                        <span><i class="legend-dot available"></i>선택 가능</span>
-                        <span><i class="legend-dot selected"></i>선택 좌석</span>
-                        <span><i class="legend-dot reserved"></i>예매 완료</span>
-                        <span><i class="legend-dot blocked"></i>선택 불가</span>
-                    </div>
-                </aside>
-
-                <article class="seat-card">
-                    <div class="stage">무대</div>
-                    <div id="seat-map" class="seat-map"></div>
-                </article>
-
-                <aside class="summary-card sticky">
-                    <h2>선택 내역</h2>
-                    <div id="summary-seat" class="summary-list"></div>
-                    <button id="go-info" class="primary-button" type="button" disabled>예매 정보 입력</button>
-                </aside>
+            <div class="auth-switch">
+                이미 계정이 있으신가요? 
+                <a id="go-to-login" class="auth-link">로그인</a>
             </div>
-        </section>
+        </div>
 
-        <section id="step-info" class="screen">
-            <div class="content-grid">
-                <article class="main-card">
-                    <div class="section-heading">
-                        <span>예매자 정보</span>
-                        <h2>입장 확인에 사용할 정보를 입력하세요</h2>
+        <!-- 3. MY PAGE PANEL -->
+        <div id="panel-mypage" class="view-panel glass-card">
+            <header class="header-area">
+                <h1 class="app-title">MY PORTAL</h1>
+                <p class="app-subtitle">발급된 고유 멤버십 정보를 조회합니다</p>
+            </header>
+
+            <!-- Holographic VIP Card -->
+            <div class="vip-card-container">
+                <div class="vip-card">
+                    <div class="card-top">
+                        <span class="card-brand"><i class="fa-solid fa-cube"></i> HEXA VIP</span>
+                        <div class="card-chip"></div>
                     </div>
-
-                    <form id="booking-form" class="booking-form simple">
-                        <label>
-                            이름
-                            <input id="buyer-name" type="text" placeholder="홍길동" autocomplete="name" required>
-                        </label>
-                        <label>
-                            전화번호
-                            <input id="buyer-phone" type="tel" placeholder="010-0000-0000" autocomplete="tel" required>
-                        </label>
-                        <label class="agree-row">
-                            <input id="agree-check" type="checkbox" required>
-                            선택한 좌석 예매 내용을 확인했습니다.
-                        </label>
-                    </form>
-                </article>
-
-                <aside class="summary-card">
-                    <h2>예매 확인</h2>
-                    <p id="confirm-message" class="confirm-message"></p>
-                    <div id="summary-payment" class="summary-list"></div>
-                    <button id="back-seat" class="ghost-button full" type="button">좌석 다시 선택</button>
-                    <button id="complete-booking" class="primary-button" type="button">예매 완료하기</button>
-                </aside>
+                    
+                    <div class="card-middle">
+                        <div class="card-code-label">Unique Code</div>
+                        <div class="card-code">
+                            <span id="card-unique-code">00000</span>
+                            <button id="btn-copy-code" class="btn-copy-card" title="고유번호 복사">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="card-bottom">
+                        <div class="card-holder-info">
+                            <div class="card-holder-label">Card Holder</div>
+                            <div class="card-holder-name" id="card-holder-name">HONG GILDONG</div>
+                        </div>
+                        <div class="card-expiry">
+                            <div class="card-expiry-label">Valid Thru</div>
+                            <div class="card-expiry-val">PERMANENT</div>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </section>
 
-        <section id="step-complete" class="screen">
-            <article class="complete-card">
-                <span class="complete-mark">완료</span>
-                <h2 id="complete-title">예매가 완료되었습니다</h2>
-                <p>예매번호와 좌석 정보를 확인해 주세요.</p>
-                <div id="complete-detail" class="receipt"></div>
-                <button id="new-booking" class="primary-button narrow" type="button">새 예매하기</button>
-            </article>
-        </section>
+            <!-- Profile Info Details -->
+            <div class="info-section">
+                <div class="info-row">
+                    <span class="info-label">이름</span>
+                    <span class="info-value" id="info-name">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">전화번호</span>
+                    <span class="info-value" id="info-phone">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">고유번호</span>
+                    <span class="info-value" id="info-code" style="font-family: monospace; font-weight: 700; color: var(--color-secondary);">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">가입일자</span>
+                    <span class="info-value" id="info-date">-</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <button id="btn-logout" class="btn btn-secondary">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                <span>로그아웃</span>
+            </button>
+        </div>
+
     </main>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=5"></script>
+    <!-- Custom Toast Notifications Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- JS Logic -->
+    <script src="app.js"></script>
 </body>
 </html>
