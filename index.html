@@ -3,175 +3,378 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="이름과 전화번호를 통해 간편하게 회원가입하고 고유한 멤버십 번호를 발급받을 수 있는 HEXA 포털 서비스입니다.">
-    <title>HEXA - 마이 멤버십 포털</title>
-    
-    <!-- CSS File -->
-    <link rel="stylesheet" href="style.css">
-    
-    <!-- Font Awesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta name="description" content="HEXA 오케스트라 공연 정보, 단원 소개, 곡 소개, 연지홀 좌석 예매를 제공하는 관현악단 웹사이트입니다.">
+    <title>HEXA 오케스트라</title>
+    <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
+    <header class="site-header">
+        <a class="brand" href="#home" aria-label="HEXA 오케스트라 홈">
+            <span class="brand-mark">H</span>
+            <span>
+                <strong>HEXA Orchestra</strong>
+                <small>연지홀 정기연주회</small>
+            </span>
+        </a>
+        <nav class="site-nav" aria-label="주요 메뉴">
+            <a href="#schedule">공연정보</a>
+            <a href="#members">단원소개</a>
+            <a href="#program">곡소개</a>
+            <a href="#account">내 티켓</a>
+            <button class="nav-ticket" type="button" data-open-ticket>티켓 예매</button>
+        </nav>
+    </header>
 
-    <!-- Premium Animated Background Blobs -->
-    <div class="background-glow">
-        <div class="glow-blob blob-1"></div>
-        <div class="glow-blob blob-2"></div>
-        <div class="glow-blob blob-3"></div>
-    </div>
-    
-    <!-- Tech Grid Overlay -->
-    <div class="grid-overlay"></div>
-
-    <!-- Main Container -->
-    <main class="app-container">
-
-        <!-- 1. LOGIN PANEL -->
-        <div id="panel-login" class="view-panel glass-card active">
-            <header class="header-area">
-                <div class="logo-glow">H</div>
-                <h1 class="app-title">HEXA PORTAL</h1>
-                <p class="app-subtitle">이름과 전화번호로 간편하게 로그인하세요</p>
-            </header>
-
-            <form id="form-login" onsubmit="event.preventDefault();">
-                <div class="form-group">
-                    <label for="login-name" class="form-label">이름</label>
-                    <div class="input-wrapper">
-                        <input type="text" id="login-name" class="form-input" placeholder="홍길동" required autocomplete="name">
-                        <i class="fa-regular fa-user input-icon"></i>
-                    </div>
+    <main>
+        <section id="home" class="hero-section" role="img" aria-label="오케스트라 공연장 무대 이미지">
+            <div class="hero-content">
+                <p class="eyebrow">HEXA Orchestra</p>
+                <h1>HEXA 오케스트라</h1>
+                <p class="hero-copy">연지홀에서 만나는 첫 번째 정기연주회. 공연 소개부터 좌석 예매까지 한 곳에서 확인할 수 있습니다.</p>
+                <div class="hero-dday">
+                    <span>공연까지</span>
+                    <strong id="hero-dday">D-Day</strong>
+                    <small id="hero-date">2026.06.19 금 19:30</small>
                 </div>
-
-                <div class="form-group">
-                    <label for="login-phone" class="form-label">전화번호</label>
-                    <div class="input-wrapper">
-                        <input type="tel" id="login-phone" class="form-input" placeholder="010-0000-0000" required autocomplete="tel">
-                        <i class="fa-solid fa-phone input-icon"></i>
-                    </div>
+                <div class="hero-actions">
+                    <button class="primary-button hero-button" type="button" data-open-ticket>티켓 예매</button>
+                    <a class="secondary-link" href="#schedule">공연 정보</a>
                 </div>
-
-                <button type="submit" id="btn-login-submit" class="btn btn-primary">
-                    <span>로그인</span>
-                    <i class="fa-solid fa-arrow-right-to-bracket"></i>
-                </button>
-            </form>
-
-            <div class="auth-switch">
-                아직 계정이 없으신가요? 
-                <a id="go-to-register" class="auth-link">회원가입</a>
+                <dl class="hero-facts">
+                    <div>
+                        <dt>공연장</dt>
+                        <dd>연지홀</dd>
+                    </div>
+                    <div>
+                        <dt>좌석</dt>
+                        <dd>가 · 나 · 다 블록</dd>
+                    </div>
+                    <div>
+                        <dt>예매</dt>
+                        <dd>좌석 선택형</dd>
+                    </div>
+                </dl>
             </div>
-        </div>
+        </section>
 
-        <!-- 2. REGISTER PANEL -->
-        <div id="panel-register" class="view-panel glass-card">
-            <header class="header-area">
-                <div class="logo-glow">H</div>
-                <h1 class="app-title">SIGN UP</h1>
-                <p class="app-subtitle">새로운 계정을 생성하고 고유번호를 발급받으세요</p>
-            </header>
-
-            <form id="form-register" onsubmit="event.preventDefault();">
-                <div class="form-group">
-                    <label for="register-name" class="form-label">이름</label>
-                    <div class="input-wrapper">
-                        <input type="text" id="register-name" class="form-input" placeholder="홍길동" required autocomplete="name">
-                        <i class="fa-regular fa-user input-icon"></i>
-                    </div>
+        <section id="schedule" class="site-section">
+            <div class="section-title-row">
+                <div>
+                    <p class="section-kicker">Concert</p>
+                    <h2>공연 일정 및 정보</h2>
                 </div>
-
-                <div class="form-group">
-                    <label for="register-phone" class="form-label">전화번호</label>
-                    <div class="input-wrapper">
-                        <input type="tel" id="register-phone" class="form-input" placeholder="010-0000-0000" required autocomplete="tel">
-                        <i class="fa-solid fa-phone input-icon"></i>
-                    </div>
-                </div>
-
-                <button type="submit" id="btn-register-submit" class="btn btn-primary">
-                    <span>회원가입 완료</span>
-                    <i class="fa-solid fa-user-plus"></i>
-                </button>
-            </form>
-
-            <div class="auth-switch">
-                이미 계정이 있으신가요? 
-                <a id="go-to-login" class="auth-link">로그인</a>
+                <button class="outline-button" type="button" data-open-ticket>좌석 예매하기</button>
             </div>
-        </div>
 
-        <!-- 3. MY PAGE PANEL -->
-        <div id="panel-mypage" class="view-panel glass-card">
-            <header class="header-area">
-                <h1 class="app-title">MY PORTAL</h1>
-                <p class="app-subtitle">발급된 고유 멤버십 정보를 조회합니다</p>
-            </header>
+            <div class="concert-detail-grid">
+                <article class="detail-panel dday-panel">
+                    <span>COUNTDOWN</span>
+                    <strong id="detail-dday">D-Day</strong>
+                    <p>공연 전까지 남은 시간을 확인하고 바로 예매할 수 있습니다.</p>
+                </article>
+                <article class="detail-panel">
+                    <span>일시</span>
+                    <h3>2026년 6월 19일 금요일 19:30</h3>
+                    <p>러닝타임 90분 예정 · 인터미션 포함</p>
+                </article>
+                <article class="detail-panel">
+                    <span>관람 안내</span>
+                    <h3>예매번호와 디지털 티켓 확인</h3>
+                    <p>입장 시 이름, 전화번호, 좌석 정보로 예매 내역을 확인합니다.</p>
+                </article>
+            </div>
 
-            <!-- Holographic VIP Card -->
-            <div class="vip-card-container">
-                <div class="vip-card">
-                    <div class="card-top">
-                        <span class="card-brand"><i class="fa-solid fa-cube"></i> HEXA VIP</span>
-                        <div class="card-chip"></div>
+            <div class="showcase-grid">
+                <article class="show-card primary-show">
+                    <span>정기연주회</span>
+                    <h3>제1회 HEXA 오케스트라 정기연주회</h3>
+                    <p>클래식 레퍼토리와 익숙한 영화음악을 함께 구성한 첫 무대입니다.</p>
+                </article>
+                <article class="show-card">
+                    <span>장소</span>
+                    <h3>연지홀</h3>
+                    <p>1층과 2층 좌석을 가 · 나 · 다 블록으로 나누어 선택할 수 있습니다.</p>
+                </article>
+                <article class="show-card">
+                    <span>예매 방식</span>
+                    <h3>블록 선택 후 좌석 선택</h3>
+                    <p>원하는 블록을 먼저 고르고 확대된 좌석표에서 좌석을 선택합니다.</p>
+                </article>
+            </div>
+        </section>
+
+        <section id="members" class="site-section muted-section">
+            <div class="section-title-row">
+                <div>
+                    <p class="section-kicker">Members</p>
+                    <h2>단원 소개</h2>
+                </div>
+            </div>
+
+            <div class="member-filters" aria-label="파트 필터">
+                <button class="member-filter is-active" type="button" data-member-filter="all">전체</button>
+                <button class="member-filter" type="button" data-member-filter="strings">현악</button>
+                <button class="member-filter" type="button" data-member-filter="woodwinds">목관</button>
+                <button class="member-filter" type="button" data-member-filter="brass">금관</button>
+                <button class="member-filter" type="button" data-member-filter="percussion">타악</button>
+            </div>
+
+            <div class="member-grid">
+                <article class="member-card" data-member-part="strings">
+                    <span class="part-mark">Vn</span>
+                    <h3>현악 파트</h3>
+                    <p>바이올린, 비올라, 첼로가 곡의 중심 선율과 화성을 이끕니다.</p>
+                </article>
+                <article class="member-card" data-member-part="woodwinds">
+                    <span class="part-mark">Ww</span>
+                    <h3>목관 파트</h3>
+                    <p>플루트, 클라리넷, 오보에가 곡의 색채와 장면 전환을 만듭니다.</p>
+                </article>
+                <article class="member-card" data-member-part="brass">
+                    <span class="part-mark">Br</span>
+                    <h3>금관 파트</h3>
+                    <p>트럼펫, 호른, 트롬본이 무대의 에너지와 클라이맥스를 담당합니다.</p>
+                </article>
+                <article class="member-card" data-member-part="percussion">
+                    <span class="part-mark">Pc</span>
+                    <h3>타악 파트</h3>
+                    <p>리듬과 효과음을 더해 공연의 긴장감과 생동감을 완성합니다.</p>
+                </article>
+            </div>
+        </section>
+
+        <section id="program" class="site-section">
+            <div class="section-title-row">
+                <div>
+                    <p class="section-kicker">Program</p>
+                    <h2>곡 소개</h2>
+                </div>
+            </div>
+
+            <div class="program-list" aria-label="디지털 팜플릿">
+                <article class="program-item is-open">
+                    <button class="program-trigger" type="button" aria-expanded="true">
+                        <span>01</span>
+                        <strong>오프닝 앙상블</strong>
+                    </button>
+                    <div class="program-panel">
+                        <p>공연의 분위기를 열어 주는 짧고 밝은 관현악 편성의 곡입니다. 처음 듣는 관객도 악기군의 입장을 자연스럽게 느낄 수 있도록 구성합니다.</p>
+                        <a href="#members">관련 파트 보기</a>
                     </div>
-                    
-                    <div class="card-middle">
-                        <div class="card-code-label">Unique Code</div>
-                        <div class="card-code">
-                            <span id="card-unique-code">00000</span>
-                            <button id="btn-copy-code" class="btn-copy-card" title="고유번호 복사">
-                                <i class="fa-regular fa-copy"></i>
-                            </button>
+                </article>
+                <article class="program-item">
+                    <button class="program-trigger" type="button" aria-expanded="false">
+                        <span>02</span>
+                        <strong>클래식 모음곡</strong>
+                    </button>
+                    <div class="program-panel">
+                        <p>현악, 목관, 금관이 서로 주고받는 구조를 중심으로 감상하면 좋습니다. 각 파트가 어떤 순간에 주선율을 맡는지 표시하는 팜플릿 영역입니다.</p>
+                        <a href="#logic">예매 로직 보기</a>
+                    </div>
+                </article>
+                <article class="program-item">
+                    <button class="program-trigger" type="button" aria-expanded="false">
+                        <span>03</span>
+                        <strong>영화음악 메들리</strong>
+                    </button>
+                    <div class="program-panel">
+                        <p>관객에게 익숙한 선율을 오케스트라 편곡으로 들려주는 무대입니다. 공연 당일에는 곡별 해설, 원곡 링크, 연주 순서를 이 영역에 넣을 수 있습니다.</p>
+                        <a href="https://www.sori21.co.kr/site/1/menu/79/content/56" target="_blank" rel="noreferrer">연지홀 좌석 안내</a>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section id="account" class="site-section account-section">
+            <div class="section-title-row">
+                <div>
+                    <p class="section-kicker">My Ticket</p>
+                    <h2>내 티켓 로그인</h2>
+                </div>
+            </div>
+
+            <div class="account-grid">
+                <article class="account-card">
+                    <h3>이름과 전화번호로 로그인</h3>
+                    <p>별도 비밀번호 없이 예매자 정보로 로그인하고, 같은 정보로 예매한 티켓을 조회합니다.</p>
+                    <form id="login-form" class="account-form">
+                        <label>
+                            이름
+                            <input id="login-name" type="text" placeholder="홍길동" autocomplete="name" required>
+                        </label>
+                        <label>
+                            전화번호
+                            <input id="login-phone" type="tel" placeholder="010-0000-0000" autocomplete="tel" required>
+                        </label>
+                        <button class="primary-button" type="submit">로그인 / 예매 조회</button>
+                    </form>
+                </article>
+
+                <article id="account-panel" class="account-card ticket-wallet-card">
+                    <div class="wallet-header">
+                        <div>
+                            <span>현재 계정</span>
+                            <h3 id="account-name">로그인 전</h3>
+                            <p id="account-phone">이름과 전화번호를 입력하면 예매 내역이 표시됩니다.</p>
                         </div>
+                        <button id="logout-account" class="ghost-button" type="button">로그아웃</button>
                     </div>
-                    
-                    <div class="card-bottom">
-                        <div class="card-holder-info">
-                            <div class="card-holder-label">Card Holder</div>
-                            <div class="card-holder-name" id="card-holder-name">HONG GILDONG</div>
-                        </div>
-                        <div class="card-expiry">
-                            <div class="card-expiry-label">Valid Thru</div>
-                            <div class="card-expiry-val">PERMANENT</div>
-                        </div>
-                    </div>
+                    <div id="ticket-wallet" class="ticket-wallet"></div>
+                </article>
+            </div>
+        </section>
+
+        <section id="logic" class="site-section muted-section logic-section">
+            <div class="section-title-row">
+                <div>
+                    <p class="section-kicker">Logic</p>
+                    <h2>좌석 상태와 예매 흐름</h2>
                 </div>
             </div>
 
-            <!-- Profile Info Details -->
-            <div class="info-section">
-                <div class="info-row">
-                    <span class="info-label">이름</span>
-                    <span class="info-value" id="info-name">-</span>
+            <div class="logic-grid">
+                <article class="logic-panel">
+                    <h3>블록별 잔여 좌석</h3>
+                    <div id="seat-status-grid" class="seat-status-grid"></div>
+                </article>
+                <article class="logic-panel">
+                    <h3>티켓팅 FSM</h3>
+                    <div class="fsm-flow" aria-label="예매 상태 흐름">
+                        <span class="fsm-node is-active" data-fsm="home">홈</span>
+                        <span class="fsm-node" data-fsm="login">로그인</span>
+                        <span class="fsm-node" data-fsm="block">블록 선택</span>
+                        <span class="fsm-node" data-fsm="seat">좌석 선택</span>
+                        <span class="fsm-node" data-fsm="info">정보 입력</span>
+                        <span class="fsm-node" data-fsm="complete">예매 완료</span>
+                        <span class="fsm-node" data-fsm="wallet">내 티켓</span>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section id="ticketing" class="site-section ticket-section">
+            <div class="ticket-gateway">
+                <div>
+                    <p class="section-kicker">Ticket</p>
+                    <h2>연지홀 좌석 예매</h2>
+                    <p>가블록, 나블록, 다블록 중 하나를 고른 뒤 확대된 좌석표에서 원하는 좌석을 선택합니다.</p>
                 </div>
-                <div class="info-row">
-                    <span class="info-label">전화번호</span>
-                    <span class="info-value" id="info-phone">-</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">고유번호</span>
-                    <span class="info-value" id="info-code" style="font-family: monospace; font-weight: 700; color: var(--color-secondary);">-</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">가입일자</span>
-                    <span class="info-value" id="info-date">-</span>
-                </div>
+                <button class="primary-button gateway-button" type="button" data-open-ticket>예매 화면 열기</button>
             </div>
 
-            <!-- Action Buttons -->
-            <button id="btn-logout" class="btn btn-secondary">
-                <i class="fa-solid fa-arrow-right-from-bracket"></i>
-                <span>로그아웃</span>
-            </button>
-        </div>
+            <div id="ticket-app" class="ticket-app is-hidden">
+                <div class="page-shell ticket-shell">
+                    <header class="top-bar">
+                        <div>
+                            <p class="eyebrow">HEXA Ticket</p>
+                            <h2>연지홀 티켓 예매</h2>
+                        </div>
+                        <button id="reset-demo" class="ghost-button" type="button">예매 초기화</button>
+                    </header>
 
+                    <nav class="steps" aria-label="예매 단계">
+                        <button class="step is-active" data-step="1" type="button">1 좌석 선택</button>
+                        <button class="step" data-step="2" type="button" disabled>2 정보 입력</button>
+                        <button class="step" data-step="3" type="button" disabled>3 예매 완료</button>
+                    </nav>
+
+                    <section id="step-seat" class="screen is-active">
+                        <div class="seat-layout">
+                            <aside class="control-card">
+                                <div class="section-heading compact">
+                                    <span>좌석 선택</span>
+                                    <h2>원하는 좌석을 선택하세요</h2>
+                                </div>
+
+                                <div class="filter-row">
+                                    <button class="filter is-active" data-floor="all" type="button">전체</button>
+                                    <button class="filter" data-floor="1F" type="button">1층</button>
+                                    <button class="filter" data-floor="2F" type="button">2층</button>
+                                </div>
+
+                                <p id="block-helper" class="block-helper">블록을 먼저 선택하면 해당 블록 좌석이 확대됩니다.</p>
+                                <button id="back-blocks" class="ghost-button full is-hidden" type="button">블록 전체 보기</button>
+
+                                <div class="legend">
+                                    <span><i class="legend-dot available"></i>선택 가능</span>
+                                    <span><i class="legend-dot selected"></i>선택 좌석</span>
+                                    <span><i class="legend-dot reserved"></i>예매 완료</span>
+                                    <span><i class="legend-dot blocked"></i>선택 불가</span>
+                                </div>
+                            </aside>
+
+                            <article class="seat-card">
+                                <div class="stage">무대</div>
+                                <div id="seat-map" class="seat-map"></div>
+                            </article>
+
+                            <aside class="summary-card sticky">
+                                <h2>선택 내역</h2>
+                                <div id="summary-seat" class="summary-list"></div>
+                                <button id="go-info" class="primary-button" type="button" disabled>예매 정보 입력</button>
+                            </aside>
+                        </div>
+                    </section>
+
+                    <section id="step-info" class="screen">
+                        <div class="content-grid">
+                            <article class="main-card">
+                                <div class="section-heading">
+                                    <span>예매자 정보</span>
+                                    <h2>입장 확인에 사용할 정보를 입력하세요</h2>
+                                </div>
+                                <p id="current-account-note" class="account-note">로그인하면 이 정보로 내 티켓 보관함에 저장됩니다.</p>
+
+                                <form id="booking-form" class="booking-form simple">
+                                    <label>
+                                        이름
+                                        <input id="buyer-name" type="text" placeholder="홍길동" autocomplete="name" required>
+                                    </label>
+                                    <label>
+                                        전화번호
+                                        <input id="buyer-phone" type="tel" placeholder="010-0000-0000" autocomplete="tel" required>
+                                    </label>
+                                    <label class="agree-row">
+                                        <input id="agree-check" type="checkbox" required>
+                                        선택한 좌석 예매 내용을 확인했습니다.
+                                    </label>
+                                </form>
+                            </article>
+
+                            <aside class="summary-card">
+                                <h2>예매 확인</h2>
+                                <p id="confirm-message" class="confirm-message"></p>
+                                <div id="summary-payment" class="summary-list"></div>
+                                <button id="back-seat" class="ghost-button full" type="button">좌석 다시 선택</button>
+                                <button id="complete-booking" class="primary-button" type="button">예매 완료하기</button>
+                            </aside>
+                        </div>
+                    </section>
+
+                    <section id="step-complete" class="screen">
+                        <article class="complete-card">
+                            <span class="complete-mark">완료</span>
+                            <h2 id="complete-title">예매가 완료되었습니다</h2>
+                            <p>예매번호와 좌석 정보를 확인해 주세요.</p>
+                            <div id="complete-detail" class="receipt"></div>
+                            <div class="complete-actions">
+                                <button id="save-complete-ticket" class="primary-button narrow" type="button" disabled>디지털 티켓 이미지 저장</button>
+                                <a class="ghost-link" href="#account" id="view-wallet">내 티켓 보기</a>
+                                <button id="new-booking" class="ghost-button narrow" type="button">새 예매하기</button>
+                            </div>
+                        </article>
+                    </section>
+                </div>
+            </div>
+        </section>
     </main>
 
-    <!-- Custom Toast Notifications Container -->
-    <div class="toast-container" id="toast-container"></div>
+    <footer class="site-footer">
+        <strong>HEXA Orchestra</strong>
+        <span>공연 정보와 티켓 예매를 위한 관현악단 웹사이트 시안</span>
+    </footer>
 
-    <!-- JS Logic -->
-    <script src="app.js"></script>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js?v=7"></script>
 </body>
 </html>
