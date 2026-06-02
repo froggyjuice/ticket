@@ -1,5 +1,7 @@
 const PRICE = 10000;
 const PERFORMANCE_NAME = '제1회 HEXA 오케스트라 정기연주회';
+const PERFORMANCE_AT = '2026-06-19T19:30:00+09:00';
+const PERFORMANCE_DATE_LABEL = '2026.06.19 금 19:30';
 const BLOCK_NAMES = {
     A: '가',
     B: '나',
@@ -24,11 +26,32 @@ const backBlocks = document.getElementById('back-blocks');
 const buyerName = document.getElementById('buyer-name');
 const buyerPhone = document.getElementById('buyer-phone');
 const agreeCheck = document.getElementById('agree-check');
+const goInfoButton = document.getElementById('go-info');
 const toast = document.getElementById('toast');
+const ticketingSection = document.getElementById('ticketing');
+const ticketApp = document.getElementById('ticket-app');
+const openTicketButtons = [...document.querySelectorAll('[data-open-ticket]')];
+const heroDday = document.getElementById('hero-dday');
+const detailDday = document.getElementById('detail-dday');
+const heroDate = document.getElementById('hero-date');
+const loginForm = document.getElementById('login-form');
+const loginName = document.getElementById('login-name');
+const loginPhone = document.getElementById('login-phone');
+const accountName = document.getElementById('account-name');
+const accountPhone = document.getElementById('account-phone');
+const accountNote = document.getElementById('current-account-note');
+const logoutAccount = document.getElementById('logout-account');
+const ticketWallet = document.getElementById('ticket-wallet');
+const seatStatusGrid = document.getElementById('seat-status-grid');
+const fsmNodes = [...document.querySelectorAll('[data-fsm]')];
+const saveCompleteTicket = document.getElementById('save-complete-ticket');
+const viewWallet = document.getElementById('view-wallet');
 
 let currentFloor = 'all';
 let activeBlock = null;
 let selectedSeatIds = [];
+let currentCompletedBooking = null;
+let currentAccount = safeGet('currentAccount', null);
 
 function safeGet(key, fallback) {
     try {
@@ -53,6 +76,31 @@ function safeRemove(key) {
     } catch (error) {
         // Ignore storage cleanup errors in file:// contexts.
     }
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function normalizePhone(value) {
+    return value.replace(/\D/g, '').slice(0, 11);
+}
+
+function accountKey(name, phone) {
+    return `${name.trim()}::${normalizePhone(phone)}`;
+}
+
+function makeAccount(name, phone) {
+    return {
+        name: name.trim(),
+        phone: formatPhoneNumber(phone),
+        key: accountKey(name, phone)
+    };
 }
 
 function createSeatData() {
@@ -98,6 +146,10 @@ function getBookings() {
     return safeGet('bookings', []);
 }
 
+function getTicketImages() {
+    return safeGet('ticketImages', {});
+}
+
 function getReservedSeatIds() {
     const saved = getBookings().flatMap(booking => booking.seats.map(seat => seat.id));
     return new Set([...sampleReservedSeats, ...saved]);
@@ -109,6 +161,16 @@ function formatMoney(value) {
 
 function formatSeat(seat) {
     return `${seat.floor} ${seat.blockName}블록 ${seat.number}번`;
+}
+
+function formatDate(value) {
+    return new Intl.DateTimeFormat('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(new Date(value));
 }
 
 function getSeatById(id) {
@@ -128,6 +190,25 @@ function showToast(message) {
     }, 2200);
 }
 
+function updateFSM(state) {
+    fsmNodes.forEach(node => {
+        node.classList.toggle('is-active', node.dataset.fsm === state);
+    });
+}
+
+function syncBookingFormWithAccount() {
+    if (!currentAccount) return;
+    buyerName.value = currentAccount.name;
+    buyerPhone.value = currentAccount.phone;
+}
+
+function updateAccountNote() {
+    if (!accountNote) return;
+    accountNote.textContent = currentAccount
+        ? `${currentAccount.name}님의 내 티켓 보관함에 예매가 저장됩니다.`
+        : '로그인하면 이 정보로 내 티켓 보관함에 저장됩니다.';
+}
+
 function goToStep(step) {
     Object.entries(screens).forEach(([key, screen]) => {
         screen.classList.toggle('is-active', Number(key) === step);
@@ -139,8 +220,19 @@ function goToStep(step) {
         button.disabled = buttonStep > step;
     });
 
+    if (step === 2) {
+        syncBookingFormWithAccount();
+    }
+
     renderSummaries();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    updateFSM(step === 1 ? (activeBlock ? 'seat' : 'block') : step === 2 ? 'info' : 'complete');
+    ticketingSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function openTicketing() {
+    ticketApp.classList.remove('is-hidden');
+    syncBookingFormWithAccount();
+    goToStep(1);
 }
 
 function getSeatStatus(seat) {
@@ -211,6 +303,8 @@ function renderBlockOverview() {
         card.addEventListener('click', () => {
             activeBlock = block;
             renderSeatMap();
+            renderSummaries();
+            updateFSM('seat');
         });
         overviewGrid.appendChild(card);
     });
@@ -324,6 +418,8 @@ function renderBlockDetail(block) {
 function showBlockOverview() {
     activeBlock = null;
     renderSeatMap();
+    renderSummaries();
+    updateFSM('block');
 }
 
 function toggleSeat(seat) {
@@ -335,6 +431,7 @@ function toggleSeat(seat) {
 
     renderSeatMap();
     renderSummaries();
+    updateFSM('seat');
 }
 
 function summaryRow(label, value) {
@@ -344,18 +441,18 @@ function summaryRow(label, value) {
 function renderSummaries() {
     const selectedSeats = getSelectedSeats();
     const count = selectedSeats.length;
-    const selectedLabels = count ? selectedSeats.map(formatSeat).join('<br>') : '선택 전';
+    const selectedLabels = count ? selectedSeats.map(seat => escapeHtml(formatSeat(seat))).join('<br>') : '선택 전';
     const total = count * PRICE;
 
     summarySeat.innerHTML = [
-        summaryRow('공연', PERFORMANCE_NAME),
+        summaryRow('공연', escapeHtml(PERFORMANCE_NAME)),
         summaryRow('선택 좌석', `${count}석`),
         summaryRow('좌석', selectedLabels),
         summaryRow('금액', formatMoney(total))
     ].join('');
 
     summaryPayment.innerHTML = [
-        summaryRow('공연', PERFORMANCE_NAME),
+        summaryRow('공연', escapeHtml(PERFORMANCE_NAME)),
         summaryRow('예매 매수', `${count}매`),
         summaryRow('좌석', selectedLabels),
         summaryRow('총 결제 금액', formatMoney(total))
@@ -365,11 +462,12 @@ function renderSummaries() {
         ? `선택한 좌석 ${count}매를 예매합니다.`
         : '좌석을 먼저 선택해 주세요.';
 
-    document.getElementById('go-info').disabled = count === 0;
+    goInfoButton.disabled = count === 0;
+    renderSeatStatus();
 }
 
 function formatPhoneNumber(value) {
-    const digits = value.replace(/\D/g, '').slice(0, 11);
+    const digits = normalizePhone(value);
     if (digits.length < 4) return digits;
     if (digits.length < 8) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
     return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
@@ -394,17 +492,27 @@ function completeBooking() {
         return;
     }
 
+    const buyer = {
+        name: buyerName.value.trim(),
+        phone: formatPhoneNumber(buyerPhone.value)
+    };
+
+    if (normalizePhone(buyer.phone).length < 10) {
+        showToast('전화번호를 다시 확인해 주세요.');
+        return;
+    }
+
+    const account = makeAccount(buyer.name, buyer.phone);
     const booking = {
         bookingNo: makeBookingNumber(),
         performance: PERFORMANCE_NAME,
+        performanceAt: PERFORMANCE_AT,
+        accountKey: account.key,
         seats: selectedSeats.map(seat => ({
             id: seat.id,
             label: formatSeat(seat)
         })),
-        buyer: {
-            name: buyerName.value.trim(),
-            phone: buyerPhone.value.trim()
-        },
+        buyer,
         total: selectedSeats.length * PRICE,
         createdAt: new Date().toISOString()
     };
@@ -412,45 +520,375 @@ function completeBooking() {
     const bookings = getBookings();
     bookings.push(booking);
     safeSet('bookings', bookings);
+
+    currentCompletedBooking = booking;
+    setCurrentAccount(account, false);
     renderComplete(booking);
+    renderSeatMap();
+    renderSummaries();
+    renderSeatStatus();
     goToStep(3);
 }
 
 function renderComplete(booking) {
     completeTitle.textContent = `선택한 좌석 ${booking.seats.length}매 예매가 완료되었습니다`;
     completeDetail.innerHTML = [
-        summaryRow('예매번호', booking.bookingNo),
-        summaryRow('공연', booking.performance),
+        summaryRow('예매번호', escapeHtml(booking.bookingNo)),
+        summaryRow('공연', escapeHtml(booking.performance)),
         summaryRow('예매 매수', `${booking.seats.length}매`),
-        summaryRow('좌석', booking.seats.map(seat => seat.label).join('<br>')),
-        summaryRow('예매자', `${booking.buyer.name} / ${booking.buyer.phone}`),
+        summaryRow('좌석', booking.seats.map(seat => escapeHtml(seat.label)).join('<br>')),
+        summaryRow('예매자', `${escapeHtml(booking.buyer.name)} / ${escapeHtml(booking.buyer.phone)}`),
         summaryRow('결제 금액', formatMoney(booking.total))
     ].join('');
+    saveCompleteTicket.disabled = false;
 }
 
 function startNewBooking() {
     selectedSeatIds = [];
     activeBlock = null;
-    buyerName.value = '';
-    buyerPhone.value = '';
+    currentCompletedBooking = null;
+    if (currentAccount) {
+        syncBookingFormWithAccount();
+    } else {
+        buyerName.value = '';
+        buyerPhone.value = '';
+    }
     agreeCheck.checked = false;
+    saveCompleteTicket.disabled = true;
     renderSeatMap();
     goToStep(1);
+}
+
+function renderDday() {
+    const target = new Date(PERFORMANCE_AT);
+    const diff = target.getTime() - Date.now();
+    const days = Math.ceil(diff / 86400000);
+    const label = days > 0 ? `D-${days}` : days === 0 ? 'D-Day' : '공연 종료';
+
+    heroDday.textContent = label;
+    detailDday.textContent = label;
+    heroDate.textContent = PERFORMANCE_DATE_LABEL;
+}
+
+function setCurrentAccount(account, showMessage = true) {
+    currentAccount = account;
+    safeSet('currentAccount', currentAccount);
+    loginName.value = account.name;
+    loginPhone.value = account.phone;
+    syncBookingFormWithAccount();
+    renderAccount();
+    updateAccountNote();
+    updateFSM('wallet');
+    if (showMessage) showToast(`${account.name}님으로 로그인했습니다.`);
+}
+
+function clearCurrentAccount() {
+    currentAccount = null;
+    safeRemove('currentAccount');
+    loginName.value = '';
+    loginPhone.value = '';
+    renderAccount();
+    updateAccountNote();
+    updateFSM('home');
+    showToast('로그아웃했습니다.');
+}
+
+function bookingBelongsToAccount(booking, account) {
+    if (!account) return false;
+    if (booking.accountKey) return booking.accountKey === account.key;
+    return accountKey(booking.buyer.name, booking.buyer.phone) === account.key;
+}
+
+function accountBookings() {
+    return getBookings().filter(booking => bookingBelongsToAccount(booking, currentAccount));
+}
+
+function renderAccount() {
+    if (!currentAccount) {
+        accountName.textContent = '로그인 전';
+        accountPhone.textContent = '이름과 전화번호를 입력하면 예매 내역이 표시됩니다.';
+        logoutAccount.disabled = true;
+        ticketWallet.innerHTML = '<p class="wallet-empty">아직 로그인하지 않았습니다. 이름과 전화번호로 로그인하면 본인 티켓을 조회할 수 있습니다.</p>';
+        return;
+    }
+
+    const bookings = accountBookings();
+    const images = getTicketImages();
+    accountName.textContent = `${currentAccount.name}님`;
+    accountPhone.textContent = currentAccount.phone;
+    logoutAccount.disabled = false;
+
+    if (bookings.length === 0) {
+        ticketWallet.innerHTML = `
+            <div class="wallet-empty">
+                아직 저장된 티켓이 없습니다.
+                <button class="outline-button wallet-book-button" type="button" data-wallet-book>좌석 예매하기</button>
+            </div>
+        `;
+        return;
+    }
+
+    ticketWallet.innerHTML = bookings.map(booking => {
+        const savedLabel = images[booking.bookingNo] ? '저장됨' : '이미지 저장';
+        return `
+            <article class="wallet-ticket">
+                <h4>${escapeHtml(booking.performance)}</h4>
+                <p><strong>${escapeHtml(booking.bookingNo)}</strong> · ${formatDate(booking.createdAt)}</p>
+                <p>${booking.seats.map(seat => escapeHtml(seat.label)).join(', ')}</p>
+                <p>${booking.seats.length}매 · ${formatMoney(booking.total)}</p>
+                <div class="wallet-ticket-actions">
+                    <button type="button" data-save-ticket="${escapeHtml(booking.bookingNo)}">${savedLabel}</button>
+                    <button type="button" data-wallet-book>추가 예매</button>
+                </div>
+            </article>
+        `;
+    }).join('');
+}
+
+function renderSeatStatus() {
+    const reservedIds = getReservedSeatIds();
+
+    seatStatusGrid.innerHTML = ['A', 'B', 'C'].map(block => {
+        const blockSeats = seats.filter(seat => seat.block === block);
+        const counts = blockSeats.reduce((result, seat) => {
+            if (seat.blocked) result.blocked += 1;
+            else if (selectedSeatIds.includes(seat.id)) result.selected += 1;
+            else if (reservedIds.has(seat.id)) result.reserved += 1;
+            else result.available += 1;
+            return result;
+        }, { available: 0, selected: 0, reserved: 0, blocked: 0 });
+
+        return `
+            <article class="seat-status-card">
+                <h4>${BLOCK_NAMES[block]}블록</h4>
+                <strong>${counts.available}석</strong>
+                <p>선택 ${counts.selected} · 예매 ${counts.reserved} · 불가 ${counts.blocked}</p>
+            </article>
+        `;
+    }).join('');
+}
+
+function drawRoundRect(context, x, y, width, height, radius) {
+    context.beginPath();
+    context.moveTo(x + radius, y);
+    context.lineTo(x + width - radius, y);
+    context.quadraticCurveTo(x + width, y, x + width, y + radius);
+    context.lineTo(x + width, y + height - radius);
+    context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    context.lineTo(x + radius, y + height);
+    context.quadraticCurveTo(x, y + height, x, y + height - radius);
+    context.lineTo(x, y + radius);
+    context.quadraticCurveTo(x, y, x + radius, y);
+    context.closePath();
+}
+
+function drawWrappedText(context, text, x, y, maxWidth, lineHeight) {
+    const words = text.split(' ');
+    let line = '';
+    let currentY = y;
+
+    words.forEach(word => {
+        const testLine = line ? `${line} ${word}` : word;
+        if (context.measureText(testLine).width > maxWidth && line) {
+            context.fillText(line, x, currentY);
+            line = word;
+            currentY += lineHeight;
+        } else {
+            line = testLine;
+        }
+    });
+
+    if (line) context.fillText(line, x, currentY);
+}
+
+function hashString(value) {
+    return [...value].reduce((hash, char) => ((hash << 5) - hash) + char.charCodeAt(0), 0);
+}
+
+function drawTicketCode(context, bookingNo, x, y, size) {
+    const grid = 11;
+    const cell = size / grid;
+    const seed = Math.abs(hashString(bookingNo));
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(x, y, size, size);
+    context.fillStyle = '#172338';
+
+    for (let row = 0; row < grid; row++) {
+        for (let col = 0; col < grid; col++) {
+            const finder = (row < 3 && col < 3) || (row < 3 && col > 7) || (row > 7 && col < 3);
+            const value = (seed + row * 17 + col * 31 + row * col) % 5;
+            if (finder || value < 2) {
+                context.fillRect(x + col * cell + 2, y + row * cell + 2, cell - 3, cell - 3);
+            }
+        }
+    }
+}
+
+function createTicketImage(booking) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 900;
+    canvas.height = 520;
+    const context = canvas.getContext('2d');
+
+    context.fillStyle = '#172338';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    context.fillStyle = '#f6f7f2';
+    drawRoundRect(context, 34, 34, 832, 452, 24);
+    context.fill();
+
+    context.fillStyle = '#27655a';
+    drawRoundRect(context, 56, 56, 788, 96, 18);
+    context.fill();
+
+    context.fillStyle = '#ffffff';
+    context.font = 'bold 20px sans-serif';
+    context.fillText('HEXA ORCHESTRA DIGITAL TICKET', 84, 96);
+    context.font = 'bold 30px sans-serif';
+    context.fillText(PERFORMANCE_NAME, 84, 132);
+
+    context.fillStyle = '#18201b';
+    context.font = 'bold 24px sans-serif';
+    context.fillText(`예매번호 ${booking.bookingNo}`, 84, 205);
+    context.font = '18px sans-serif';
+    context.fillText(`예매자 ${booking.buyer.name} / ${booking.buyer.phone}`, 84, 244);
+    context.fillText(`공연일 ${PERFORMANCE_DATE_LABEL}`, 84, 282);
+    context.fillText(`좌석 ${booking.seats.map(seat => seat.label).join(', ')}`, 84, 320);
+    context.fillText(`매수 ${booking.seats.length}매 · 금액 ${formatMoney(booking.total)}`, 84, 358);
+
+    context.fillStyle = '#667085';
+    context.font = '15px sans-serif';
+    drawWrappedText(context, '입장 시 이 디지털 티켓과 예매자 정보를 함께 확인해 주세요.', 84, 424, 520, 22);
+
+    drawTicketCode(context, booking.bookingNo, 650, 214, 150);
+    context.fillStyle = '#18201b';
+    context.font = 'bold 16px sans-serif';
+    context.fillText('연지홀 입장 확인용', 652, 394);
+
+    return canvas.toDataURL('image/png');
+}
+
+function saveTicketImage(bookingNo) {
+    const booking = getBookings().find(item => item.bookingNo === bookingNo);
+    if (!booking) {
+        showToast('티켓 정보를 찾을 수 없습니다.');
+        return;
+    }
+
+    const dataUrl = createTicketImage(booking);
+    const images = getTicketImages();
+    images[booking.bookingNo] = dataUrl;
+    safeSet('ticketImages', images);
+
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `ticket-${booking.bookingNo}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    renderAccount();
+    showToast('디지털 티켓 이미지를 저장했습니다.');
+}
+
+function setupMemberFilters() {
+    document.querySelectorAll('[data-member-filter]').forEach(button => {
+        button.addEventListener('click', () => {
+            const filter = button.dataset.memberFilter;
+            document.querySelectorAll('[data-member-filter]').forEach(item => item.classList.remove('is-active'));
+            button.classList.add('is-active');
+            document.querySelectorAll('[data-member-part]').forEach(card => {
+                card.classList.toggle('is-hidden', filter !== 'all' && card.dataset.memberPart !== filter);
+            });
+        });
+    });
+}
+
+function setupProgramAccordion() {
+    document.querySelectorAll('.program-trigger').forEach(button => {
+        button.addEventListener('click', () => {
+            const item = button.closest('.program-item');
+            const willOpen = !item.classList.contains('is-open');
+            document.querySelectorAll('.program-item').forEach(program => {
+                program.classList.remove('is-open');
+                program.querySelector('.program-trigger').setAttribute('aria-expanded', 'false');
+            });
+            item.classList.toggle('is-open', willOpen);
+            button.setAttribute('aria-expanded', String(willOpen));
+        });
+    });
+}
+
+function setupAccountEvents() {
+    loginForm.addEventListener('submit', event => {
+        event.preventDefault();
+        const account = makeAccount(loginName.value, loginPhone.value);
+        if (!account.name || normalizePhone(account.phone).length < 10) {
+            showToast('이름과 전화번호를 확인해 주세요.');
+            return;
+        }
+        setCurrentAccount(account);
+    });
+
+    logoutAccount.addEventListener('click', clearCurrentAccount);
+
+    ticketWallet.addEventListener('click', event => {
+        const button = event.target.closest('button');
+        if (!button) return;
+
+        if (button.dataset.saveTicket) {
+            saveTicketImage(button.dataset.saveTicket);
+            return;
+        }
+
+        if (button.dataset.walletBook !== undefined) {
+            openTicketing();
+        }
+    });
+
+    viewWallet.addEventListener('click', () => {
+        renderAccount();
+        updateFSM('wallet');
+    });
 }
 
 document.getElementById('go-info').addEventListener('click', () => goToStep(2));
 document.getElementById('back-seat').addEventListener('click', () => goToStep(1));
 document.getElementById('complete-booking').addEventListener('click', completeBooking);
 document.getElementById('new-booking').addEventListener('click', startNewBooking);
+saveCompleteTicket.addEventListener('click', () => {
+    if (currentCompletedBooking) saveTicketImage(currentCompletedBooking.bookingNo);
+});
+
+openTicketButtons.forEach(button => {
+    button.addEventListener('click', openTicketing);
+});
+
+document.querySelectorAll('a[href="#account"]').forEach(link => {
+    link.addEventListener('click', () => updateFSM(currentAccount ? 'wallet' : 'login'));
+});
+
 document.getElementById('reset-demo').addEventListener('click', () => {
     safeRemove('bookings');
-    startNewBooking();
+    safeRemove('ticketImages');
+    selectedSeatIds = [];
+    activeBlock = null;
+    currentCompletedBooking = null;
+    saveCompleteTicket.disabled = true;
+    renderSeatMap();
+    renderSummaries();
+    renderAccount();
     showToast('예매 데이터를 초기화했습니다.');
 });
 
 backBlocks.addEventListener('click', showBlockOverview);
 
 buyerPhone.addEventListener('input', event => {
+    event.target.value = formatPhoneNumber(event.target.value);
+});
+
+loginPhone.addEventListener('input', event => {
     event.target.value = formatPhoneNumber(event.target.value);
 });
 
@@ -464,5 +902,16 @@ document.querySelectorAll('.filter').forEach(button => {
     });
 });
 
+setupMemberFilters();
+setupProgramAccordion();
+setupAccountEvents();
+renderDday();
 renderSeatMap();
 renderSummaries();
+renderSeatStatus();
+renderAccount();
+updateAccountNote();
+if (currentAccount) {
+    syncBookingFormWithAccount();
+}
+updateFSM('home');
