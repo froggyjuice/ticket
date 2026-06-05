@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "ticketBookings": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

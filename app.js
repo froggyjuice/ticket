@@ -1,7 +1,9 @@
-const PRICE = 10000;
+const PRICE = 0;
 const PERFORMANCE_NAME = '제1회 HEXA 오케스트라 정기연주회';
 const PERFORMANCE_AT = '2026-06-19T19:30:00+09:00';
 const PERFORMANCE_DATE_LABEL = '2026.06.19 금 19:30';
+const ADMIN_PIN = '0000';
+const FIREBASE_VERSION = '10.12.5';
 const BLOCK_NAMES = {
     A: '가',
     B: '나',
@@ -46,12 +48,25 @@ const seatStatusGrid = document.getElementById('seat-status-grid');
 const fsmNodes = [...document.querySelectorAll('[data-fsm]')];
 const saveCompleteTicket = document.getElementById('save-complete-ticket');
 const viewWallet = document.getElementById('view-wallet');
+const dbStatus = document.getElementById('db-status');
+const adminForm = document.getElementById('admin-form');
+const adminPin = document.getElementById('admin-pin');
+const adminPanel = document.getElementById('admin-panel');
+const adminBookings = document.getElementById('admin-bookings');
+const adminLogout = document.getElementById('admin-logout');
 
 let currentFloor = 'all';
 let activeBlock = null;
 let selectedSeatIds = [];
 let currentCompletedBooking = null;
 let currentAccount = safeGet('currentAccount', null);
+let bookingsCache = [];
+let firebaseDb = null;
+let firebaseApi = null;
+let storageMode = 'local';
+let adminUnlocked = false;
+let isCompletingBooking = false;
+let lastFirebaseError = '';
 
 function safeGet(key, fallback) {
     try {
@@ -106,7 +121,7 @@ function makeAccount(name, phone) {
 function createSeatData() {
     const seats = [];
 
-    const addBlock = ({ floor, block, rowCounts, blockedRows = [] }) => {
+    const addBlock = ({ floor, block, rowCounts }) => {
         let number = 1;
 
         rowCounts.forEach((count, rowIndex) => {
@@ -120,7 +135,7 @@ function createSeatData() {
                     number,
                     row: rowIndex + 1,
                     column,
-                    blocked: blockedRows.includes(rowIndex)
+                    blocked: false
                 });
                 number++;
             }
@@ -130,7 +145,7 @@ function createSeatData() {
     const sideFirstFloorRows = [8, 9, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11];
 
     addBlock({ floor: '1F', block: 'A', rowCounts: sideFirstFloorRows });
-    addBlock({ floor: '1F', block: 'B', rowCounts: [12, 12, 12, 11, 12, 12, 12, 12, 12, 12, 12, 12, 16], blockedRows: [12] });
+    addBlock({ floor: '1F', block: 'B', rowCounts: [12, 12, 12, 11, 12, 12, 12, 12, 12, 12, 12, 12, 16] });
     addBlock({ floor: '1F', block: 'C', rowCounts: sideFirstFloorRows });
     addBlock({ floor: '2F', block: 'A', rowCounts: [5, 5, 11, 11, 11, 11, 11] });
     addBlock({ floor: '2F', block: 'B', rowCounts: [12, 11, 12, 12, 12] });
@@ -140,22 +155,194 @@ function createSeatData() {
 }
 
 const seats = createSeatData();
-const sampleReservedSeats = ['1F-A-012', '1F-A-053', '1F-B-047', '1F-B-108', '1F-C-043', '2F-A-021', '2F-B-053', '2F-C-016'];
 
 function getBookings() {
-    return safeGet('bookings', []);
+    return bookingsCache;
 }
 
 function getTicketImages() {
     return safeGet('ticketImages', {});
 }
 
+function hasFirebaseConfig() {
+    const config = window.FIREBASE_CONFIG || {};
+    return Boolean(config.apiKey && config.projectId && config.appId);
+}
+
+function updateDbStatus(message) {
+    if (!dbStatus) return;
+
+    dbStatus.classList.remove('is-online', 'is-local');
+    if (storageMode === 'firebase') {
+        dbStatus.classList.add('is-online');
+        dbStatus.textContent = message || 'Firebase Realtime Database 연결됨: 좌석, 이름, 전화번호가 DB에 저장됩니다.';
+        return;
+    }
+
+    dbStatus.classList.add('is-local');
+    dbStatus.textContent = message || 'Firebase 설정값이 비어 있어 현재는 브라우저 로컬 저장소에 저장됩니다.';
+}
+
+function bookingsPath() {
+    return window.FIREBASE_BOOKINGS_PATH || 'ticketBookings';
+}
+
+function firebaseDatabaseUrl() {
+    const config = window.FIREBASE_CONFIG || {};
+    return config.databaseURL || window.FIREBASE_DATABASE_URL || `https://${config.projectId}-default-rtdb.firebaseio.com`;
+}
+
+function firebaseErrorMessage(error) {
+    const message = error?.message || String(error || '');
+    if (message.includes('Database lives in a different region')) {
+        return 'Realtime Database URL 지역이 맞지 않습니다. firebase-config.js의 databaseURL을 콘솔에 표시된 URL과 맞춰 주세요.';
+    }
+    if (message.includes('permission_denied') || message.includes('permission-denied') || message.includes('Permission denied')) {
+        return 'Realtime Database 보안 규칙이 읽기/쓰기를 막고 있습니다. ticketBookings 경로 규칙을 확인해 주세요.';
+    }
+    if (message.includes('Failed to fetch') || message.includes('network')) {
+        return 'Firebase 네트워크 연결에 실패했습니다. 인터넷 연결 또는 브라우저 차단 설정을 확인해 주세요.';
+    }
+    return `Firebase 오류: ${message}`;
+}
+
+async function initFirebaseStorage() {
+    if (!hasFirebaseConfig()) {
+        storageMode = 'local';
+        bookingsCache = safeGet('bookings', []);
+        lastFirebaseError = 'Firebase 설정값이 비어 있습니다.';
+        updateDbStatus();
+        return;
+    }
+
+    try {
+        const [appModule, databaseModule] = await Promise.all([
+            import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`),
+            import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-database.js`)
+        ]);
+
+        const app = appModule.initializeApp(window.FIREBASE_CONFIG);
+        firebaseDb = databaseModule.getDatabase(app, firebaseDatabaseUrl());
+        firebaseApi = databaseModule;
+        storageMode = 'firebase';
+        await refreshBookingsFromFirebase();
+        lastFirebaseError = '';
+        updateDbStatus();
+    } catch (error) {
+        storageMode = 'local';
+        firebaseDb = null;
+        firebaseApi = null;
+        bookingsCache = [];
+        safeSet('bookings', bookingsCache);
+        lastFirebaseError = firebaseErrorMessage(error);
+        updateDbStatus(`${lastFirebaseError} 현재는 브라우저 로컬 저장소에 저장됩니다.`);
+    }
+}
+
+async function refreshBookingsFromFirebase() {
+    if (!firebaseDb || !firebaseApi) return;
+
+    const snapshot = await firebaseApi.get(firebaseApi.ref(firebaseDb, bookingsPath()));
+    const values = snapshot.exists() ? snapshot.val() : {};
+    const records = Object.entries(values || {})
+        .filter(([, value]) => value && typeof value === 'object')
+        .map(([key, value]) => ({
+            ...value,
+            id: value.id || key,
+            __docId: key
+        }));
+    const legacyBookings = records.filter(record => !record.seatId && Array.isArray(record.seats));
+
+    if (legacyBookings.length > 0) {
+        await Promise.all(legacyBookings.flatMap(booking => [
+            ...seatRecordsFromBooking(booking).map(record => (
+                firebaseApi.set(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${record.id}`), record)
+            )),
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${booking.__docId}`))
+        ]));
+    }
+
+    const seatRecords = records.flatMap(record => (
+        record.seatId ? [record] : seatRecordsFromBooking(record)
+    ));
+    bookingsCache = groupSeatRecords(seatRecords);
+    safeSet('bookings', bookingsCache);
+}
+
+async function saveBookingRecord(booking) {
+    bookingsCache = [...bookingsCache, booking];
+    safeSet('bookings', bookingsCache);
+
+    if (firebaseDb && firebaseApi) {
+        try {
+            await Promise.all(seatRecordsFromBooking(booking).map(record => (
+                firebaseApi.set(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${record.id}`), record)
+            )));
+            return true;
+        } catch (error) {
+            console.warn('Firebase booking save failed. Falling back to local storage.', error);
+            lastFirebaseError = firebaseErrorMessage(error);
+            storageMode = 'local';
+            firebaseDb = null;
+            firebaseApi = null;
+            updateDbStatus(`${lastFirebaseError} 예매는 브라우저 로컬 저장소에 저장했습니다.`);
+            return false;
+        }
+    }
+
+    return false;
+}
+
+async function updateBookingRecord(updatedBooking) {
+    bookingsCache = bookingsCache.map(booking => (
+        booking.bookingNo === updatedBooking.bookingNo ? updatedBooking : booking
+    ));
+    safeSet('bookings', bookingsCache);
+
+    if (firebaseDb && firebaseApi) {
+        await Promise.all(seatRecordsFromBooking(updatedBooking).map(record => (
+            firebaseApi.set(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${record.id}`), record)
+        )));
+    }
+}
+
+async function deleteBookingRecord(bookingNo) {
+    const booking = bookingsCache.find(item => item.bookingNo === bookingNo);
+    bookingsCache = bookingsCache.filter(booking => booking.bookingNo !== bookingNo);
+    safeSet('bookings', bookingsCache);
+
+    if (firebaseDb && firebaseApi && booking) {
+        await Promise.all(booking.seats.map(seat => (
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${seatBookingId(bookingNo, seat.id)}`))
+        )));
+    }
+}
+
+async function deleteSeatRecord(bookingNo, seatId) {
+    if (firebaseDb && firebaseApi) {
+        await firebaseApi.remove(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${seatBookingId(bookingNo, seatId)}`));
+    }
+}
+
+async function clearBookingRecords() {
+    const bookingRecords = bookingsCache.flatMap(seatRecordsFromBooking);
+    bookingsCache = [];
+    safeSet('bookings', bookingsCache);
+
+    if (firebaseDb && firebaseApi) {
+        await Promise.all(bookingRecords.map(record => (
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${record.id}`))
+        )));
+    }
+}
+
 function getReservedSeatIds() {
     const saved = getBookings().flatMap(booking => booking.seats.map(seat => seat.id));
-    return new Set([...sampleReservedSeats, ...saved]);
+    return new Set(saved);
 }
 
 function formatMoney(value) {
+    if (value === 0) return '무료';
     return `${value.toLocaleString('ko-KR')}원`;
 }
 
@@ -209,16 +396,43 @@ function updateAccountNote() {
         : '로그인하면 이 정보로 내 티켓 보관함에 저장됩니다.';
 }
 
-function goToStep(step) {
-    Object.entries(screens).forEach(([key, screen]) => {
-        screen.classList.toggle('is-active', Number(key) === step);
+function setTicketStep(step) {
+    const stepScreens = {
+        1: document.getElementById('step-seat'),
+        2: document.getElementById('step-info'),
+        3: document.getElementById('step-complete')
+    };
+
+    Object.entries(stepScreens).forEach(([key, screen]) => {
+        if (!screen) return;
+        const isActive = Number(key) === step;
+        screen.classList.toggle('is-active', isActive);
+        screen.hidden = !isActive;
+        screen.style.display = isActive ? 'block' : 'none';
     });
 
-    steps.forEach(button => {
+    document.querySelectorAll('.step').forEach(button => {
         const buttonStep = Number(button.dataset.step);
         button.classList.toggle('is-active', buttonStep === step);
         button.disabled = buttonStep > step;
     });
+}
+
+function showCompleteScreen(booking) {
+    ticketApp.classList.remove('is-hidden');
+    try {
+        renderComplete(booking);
+    } catch (error) {
+        console.warn('Complete receipt rendering failed.', error);
+    }
+    setTicketStep(3);
+    updateFSM('complete');
+    window.location.hash = 'ticketing';
+    ticketingSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function goToStep(step) {
+    setTicketStep(step);
 
     if (step === 2) {
         syncBookingFormWithAccount();
@@ -232,6 +446,9 @@ function goToStep(step) {
 function openTicketing() {
     ticketApp.classList.remove('is-hidden');
     syncBookingFormWithAccount();
+    if (!seatMap.children.length) {
+        renderSeatMap();
+    }
     goToStep(1);
 }
 
@@ -295,7 +512,6 @@ function renderBlockOverview() {
             <div class="block-card-meta">
                 <span>선택 ${statusCounts.selected}</span>
                 <span>예매 ${statusCounts.reserved}</span>
-                <span>불가 ${statusCounts.blocked}</span>
             </div>
         `;
 
@@ -424,9 +640,9 @@ function showBlockOverview() {
 
 function toggleSeat(seat) {
     if (selectedSeatIds.includes(seat.id)) {
-        selectedSeatIds = selectedSeatIds.filter(id => id !== seat.id);
+        selectedSeatIds = [];
     } else {
-        selectedSeatIds.push(seat.id);
+        selectedSeatIds = [seat.id];
     }
 
     renderSeatMap();
@@ -446,20 +662,20 @@ function renderSummaries() {
 
     summarySeat.innerHTML = [
         summaryRow('공연', escapeHtml(PERFORMANCE_NAME)),
-        summaryRow('선택 좌석', `${count}석`),
+        summaryRow('선택 좌석', count ? '1석' : '0석'),
         summaryRow('좌석', selectedLabels),
-        summaryRow('금액', formatMoney(total))
+        summaryRow('예매 금액', formatMoney(total))
     ].join('');
 
     summaryPayment.innerHTML = [
         summaryRow('공연', escapeHtml(PERFORMANCE_NAME)),
-        summaryRow('예매 매수', `${count}매`),
+        summaryRow('예매 좌석', count ? '1석' : '0석'),
         summaryRow('좌석', selectedLabels),
-        summaryRow('총 결제 금액', formatMoney(total))
+        summaryRow('예매 금액', formatMoney(total))
     ].join('');
 
     confirmMessage.textContent = count
-        ? `선택한 좌석 ${count}매를 예매합니다.`
+        ? `선택한 좌석 1석을 예매합니다.`
         : '좌석을 먼저 선택해 주세요.';
 
     goInfoButton.disabled = count === 0;
@@ -480,11 +696,74 @@ function makeBookingNumber() {
     return `YJ${datePart}${randomPart}`;
 }
 
-function completeBooking() {
-    const form = document.getElementById('booking-form');
-    const selectedSeats = getSelectedSeats();
+function seatBookingId(bookingNo, seatId) {
+    return `${bookingNo}-${seatId}`;
+}
 
-    if (!form.reportValidity()) return;
+function bookingFromSeatRecords(records) {
+    if (records.length === 0) return null;
+
+    const first = records[0];
+    const seatsForBooking = records.map(record => ({
+        id: record.seatId,
+        label: record.seatLabel
+    }));
+
+    return {
+        bookingNo: first.bookingNo,
+        performance: first.performance,
+        performanceAt: first.performanceAt,
+        accountKey: first.accountKey,
+        name: first.name,
+        phone: first.phone,
+        buyer: {
+            name: first.name,
+            phone: first.phone
+        },
+        seatIds: seatsForBooking.map(seat => seat.id),
+        seatLabels: seatsForBooking.map(seat => seat.label),
+        seats: seatsForBooking,
+        total: seatsForBooking.length * PRICE,
+        createdAt: first.createdAt,
+        updatedAt: first.updatedAt
+    };
+}
+
+function groupSeatRecords(records) {
+    const grouped = records.reduce((groups, record) => {
+        const key = record.bookingNo;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(record);
+        return groups;
+    }, new Map());
+
+    return [...grouped.values()]
+        .map(bookingFromSeatRecords)
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+}
+
+function seatRecordsFromBooking(booking) {
+    return booking.seats.map(seat => ({
+        id: seatBookingId(booking.bookingNo, seat.id),
+        bookingNo: booking.bookingNo,
+        performance: booking.performance,
+        performanceAt: booking.performanceAt,
+        accountKey: booking.accountKey,
+        name: booking.name || booking.buyer.name,
+        phone: booking.phone || booking.buyer.phone,
+        seatId: seat.id,
+        seatLabel: seat.label,
+        createdAt: booking.createdAt,
+        updatedAt: booking.updatedAt || booking.createdAt
+    }));
+}
+
+async function completeBooking(event) {
+    event?.preventDefault();
+    if (isCompletingBooking) return;
+
+    const selectedSeats = getSelectedSeats();
 
     if (selectedSeats.length === 0) {
         showToast('좌석을 먼저 선택해 주세요.');
@@ -497,48 +776,85 @@ function completeBooking() {
         phone: formatPhoneNumber(buyerPhone.value)
     };
 
+    if (!buyer.name) {
+        showToast('이름을 입력해 주세요.');
+        buyerName.focus();
+        return;
+    }
+
     if (normalizePhone(buyer.phone).length < 10) {
         showToast('전화번호를 다시 확인해 주세요.');
+        buyerPhone.focus();
         return;
     }
 
     const account = makeAccount(buyer.name, buyer.phone);
+    const seatIds = selectedSeats.map(seat => seat.id);
+    const seatLabels = selectedSeats.map(formatSeat);
     const booking = {
         bookingNo: makeBookingNumber(),
         performance: PERFORMANCE_NAME,
         performanceAt: PERFORMANCE_AT,
         accountKey: account.key,
-        seats: selectedSeats.map(seat => ({
+        seatIds,
+        seatLabels,
+        name: buyer.name,
+        phone: buyer.phone,
+        seats: selectedSeats.map((seat, index) => ({
             id: seat.id,
-            label: formatSeat(seat)
+            label: seatLabels[index]
         })),
         buyer,
         total: selectedSeats.length * PRICE,
         createdAt: new Date().toISOString()
     };
 
-    const bookings = getBookings();
-    bookings.push(booking);
-    safeSet('bookings', bookings);
-
+    isCompletingBooking = true;
     currentCompletedBooking = booking;
-    setCurrentAccount(account, false);
-    renderComplete(booking);
-    renderSeatMap();
-    renderSummaries();
-    renderSeatStatus();
-    goToStep(3);
+    currentAccount = account;
+    safeSet('currentAccount', currentAccount);
+    loginName.value = account.name;
+    loginPhone.value = account.phone;
+    syncBookingFormWithAccount();
+    showCompleteScreen(booking);
+    showToast('예매가 완료되었습니다.');
+
+    try {
+        const savePromise = saveBookingRecord(booking);
+        renderSeatMap();
+        renderSummaries();
+        renderSeatStatus();
+        renderAccount();
+        renderAdminBookings();
+        updateAccountNote();
+        savePromise.then(savedToFirebase => {
+            if (!savedToFirebase) {
+                showToast('예매는 완료됐고, Firebase 저장 상태는 관리자 영역에서 확인해 주세요.');
+            }
+        }).catch(error => {
+            console.warn('Booking save failed after completion screen.', error);
+            showToast('예매는 완료됐고, Firebase 저장 상태는 관리자 영역에서 확인해 주세요.');
+        });
+    } catch (error) {
+        console.warn('Post-booking refresh failed.', error);
+    }
+
+    window.setTimeout(() => {
+        isCompletingBooking = false;
+    }, 700);
 }
 
+window.completeBooking = completeBooking;
+
 function renderComplete(booking) {
-    completeTitle.textContent = `선택한 좌석 ${booking.seats.length}매 예매가 완료되었습니다`;
+    completeTitle.textContent = '선택한 좌석 예매가 완료되었습니다';
     completeDetail.innerHTML = [
         summaryRow('예매번호', escapeHtml(booking.bookingNo)),
         summaryRow('공연', escapeHtml(booking.performance)),
-        summaryRow('예매 매수', `${booking.seats.length}매`),
+        summaryRow('예매 좌석', '1석'),
         summaryRow('좌석', booking.seats.map(seat => escapeHtml(seat.label)).join('<br>')),
         summaryRow('예매자', `${escapeHtml(booking.buyer.name)} / ${escapeHtml(booking.buyer.phone)}`),
-        summaryRow('결제 금액', formatMoney(booking.total))
+        summaryRow('예매 금액', formatMoney(booking.total))
     ].join('');
     saveCompleteTicket.disabled = false;
 }
@@ -634,15 +950,118 @@ function renderAccount() {
             <article class="wallet-ticket">
                 <h4>${escapeHtml(booking.performance)}</h4>
                 <p><strong>${escapeHtml(booking.bookingNo)}</strong> · ${formatDate(booking.createdAt)}</p>
-                <p>${booking.seats.map(seat => escapeHtml(seat.label)).join(', ')}</p>
                 <p>${booking.seats.length}매 · ${formatMoney(booking.total)}</p>
+                <div class="seat-cancel-list">
+                    ${booking.seats.map(seat => `
+                        <div class="seat-cancel-row">
+                            <strong>${escapeHtml(seat.label)}</strong>
+                            <button type="button" data-booking-no="${escapeHtml(booking.bookingNo)}" data-cancel-seat="${escapeHtml(seat.id)}">이 좌석 취소</button>
+                        </div>
+                    `).join('')}
+                </div>
                 <div class="wallet-ticket-actions">
                     <button type="button" data-save-ticket="${escapeHtml(booking.bookingNo)}">${savedLabel}</button>
+                    <button type="button" data-cancel-booking="${escapeHtml(booking.bookingNo)}">전체 취소</button>
                     <button type="button" data-wallet-book>추가 예매</button>
                 </div>
             </article>
         `;
     }).join('');
+}
+
+function bookingAfterSeatCancel(booking, seatId) {
+    const seatsAfterCancel = booking.seats.filter(seat => seat.id !== seatId);
+    return {
+        ...booking,
+        seats: seatsAfterCancel,
+        seatIds: seatsAfterCancel.map(seat => seat.id),
+        seatLabels: seatsAfterCancel.map(seat => seat.label),
+        total: seatsAfterCancel.length * PRICE,
+        updatedAt: new Date().toISOString()
+    };
+}
+
+async function cancelSeat(bookingNo, seatId, options = {}) {
+    const booking = getBookings().find(item => item.bookingNo === bookingNo);
+    if (!booking) {
+        showToast('취소할 예매를 찾을 수 없습니다.');
+        return;
+    }
+
+    const seat = booking.seats.find(item => item.id === seatId);
+    if (!seat) {
+        showToast('취소할 좌석을 찾을 수 없습니다.');
+        return;
+    }
+
+    if (!options.skipConfirm && !window.confirm(`${seat.label} 좌석 예매를 취소할까요?`)) {
+        return;
+    }
+
+    try {
+        const updatedBooking = bookingAfterSeatCancel(booking, seatId);
+        await deleteSeatRecord(bookingNo, seatId);
+        if (updatedBooking.seats.length === 0) {
+            bookingsCache = bookingsCache.filter(item => item.bookingNo !== bookingNo);
+            safeSet('bookings', bookingsCache);
+        } else {
+            bookingsCache = bookingsCache.map(item => (
+                item.bookingNo === bookingNo ? updatedBooking : item
+            ));
+            safeSet('bookings', bookingsCache);
+        }
+
+        const images = getTicketImages();
+        delete images[bookingNo];
+        safeSet('ticketImages', images);
+        selectedSeatIds = selectedSeatIds.filter(id => id !== seatId);
+        if (currentCompletedBooking?.bookingNo === bookingNo) {
+            currentCompletedBooking = updatedBooking.seats.length ? updatedBooking : null;
+            if (currentCompletedBooking) {
+                renderComplete(currentCompletedBooking);
+            } else {
+                saveCompleteTicket.disabled = true;
+            }
+        }
+        renderSeatMap();
+        renderSummaries();
+        renderAccount();
+        renderAdminBookings();
+        showToast(`${seat.label} 좌석 예매가 취소되었습니다.`);
+    } catch (error) {
+        showToast('예매 취소에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+}
+
+async function cancelBooking(bookingNo, options = {}) {
+    const booking = getBookings().find(item => item.bookingNo === bookingNo);
+    if (!booking) {
+        showToast('취소할 예매를 찾을 수 없습니다.');
+        return;
+    }
+
+    if (!options.skipConfirm && !window.confirm(`${booking.seats.map(seat => seat.label).join(', ')} 예매를 모두 취소할까요?`)) {
+        return;
+    }
+
+    try {
+        await deleteBookingRecord(bookingNo);
+        const images = getTicketImages();
+        delete images[bookingNo];
+        safeSet('ticketImages', images);
+        selectedSeatIds = selectedSeatIds.filter(id => !booking.seats.some(seat => seat.id === id));
+        if (currentCompletedBooking?.bookingNo === bookingNo) {
+            currentCompletedBooking = null;
+            saveCompleteTicket.disabled = true;
+        }
+        renderSeatMap();
+        renderSummaries();
+        renderAccount();
+        renderAdminBookings();
+        showToast('예매가 모두 취소되었습니다. 좌석이 다시 열렸습니다.');
+    } catch (error) {
+        showToast('예매 취소에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    }
 }
 
 function renderSeatStatus() {
@@ -662,10 +1081,40 @@ function renderSeatStatus() {
             <article class="seat-status-card">
                 <h4>${BLOCK_NAMES[block]}블록</h4>
                 <strong>${counts.available}석</strong>
-                <p>선택 ${counts.selected} · 예매 ${counts.reserved} · 불가 ${counts.blocked}</p>
+                <p>선택 ${counts.selected} · 예매 ${counts.reserved}</p>
             </article>
         `;
     }).join('');
+}
+
+function renderAdminBookings() {
+    if (!adminBookings || !adminUnlocked) return;
+
+    const bookings = getBookings();
+    if (bookings.length === 0) {
+        adminBookings.innerHTML = '<p class="wallet-empty">현재 예매 내역이 없습니다.</p>';
+        return;
+    }
+
+    adminBookings.innerHTML = bookings.flatMap(booking => (
+        booking.seats.map(seat => `
+            <article class="admin-booking-row">
+                <div>
+                    <span>좌석</span>
+                    <strong>${escapeHtml(seat.label)}</strong>
+                </div>
+                <div>
+                    <span>이름</span>
+                    <strong>${escapeHtml(booking.name || booking.buyer.name)}</strong>
+                </div>
+                <div>
+                    <span>전화번호</span>
+                    <strong>${escapeHtml(booking.phone || booking.buyer.phone)}</strong>
+                </div>
+                <button class="admin-action-button cancel" type="button" data-booking-no="${escapeHtml(booking.bookingNo)}" data-admin-cancel-seat="${escapeHtml(seat.id)}">좌석 취소</button>
+            </article>
+        `)
+    )).join('');
 }
 
 function drawRoundRect(context, x, y, width, height, radius) {
@@ -755,7 +1204,7 @@ function createTicketImage(booking) {
     context.fillText(`예매자 ${booking.buyer.name} / ${booking.buyer.phone}`, 84, 244);
     context.fillText(`공연일 ${PERFORMANCE_DATE_LABEL}`, 84, 282);
     context.fillText(`좌석 ${booking.seats.map(seat => seat.label).join(', ')}`, 84, 320);
-    context.fillText(`매수 ${booking.seats.length}매 · 금액 ${formatMoney(booking.total)}`, 84, 358);
+    context.fillText(`매수 ${booking.seats.length}매 · 예매 금액 ${formatMoney(booking.total)}`, 84, 358);
 
     context.fillStyle = '#667085';
     context.font = '15px sans-serif';
@@ -842,6 +1291,16 @@ function setupAccountEvents() {
             return;
         }
 
+        if (button.dataset.cancelSeat) {
+            cancelSeat(button.dataset.bookingNo, button.dataset.cancelSeat);
+            return;
+        }
+
+        if (button.dataset.cancelBooking) {
+            cancelBooking(button.dataset.cancelBooking);
+            return;
+        }
+
         if (button.dataset.walletBook !== undefined) {
             openTicketing();
         }
@@ -850,6 +1309,35 @@ function setupAccountEvents() {
     viewWallet.addEventListener('click', () => {
         renderAccount();
         updateFSM('wallet');
+    });
+}
+
+function setupAdminEvents() {
+    adminForm.addEventListener('submit', event => {
+        event.preventDefault();
+
+        if (adminPin.value !== ADMIN_PIN) {
+            showToast('관리자 코드가 맞지 않습니다.');
+            return;
+        }
+
+        adminUnlocked = true;
+        adminPanel.classList.remove('is-hidden');
+        adminPin.value = '';
+        renderAdminBookings();
+        showToast('관리자 모드를 열었습니다.');
+    });
+
+    adminLogout.addEventListener('click', () => {
+        adminUnlocked = false;
+        adminPanel.classList.add('is-hidden');
+        updateFSM('home');
+    });
+
+    adminBookings.addEventListener('click', event => {
+        const button = event.target.closest('button[data-admin-cancel-seat]');
+        if (!button) return;
+        cancelSeat(button.dataset.bookingNo, button.dataset.adminCancelSeat);
     });
 }
 
@@ -869,8 +1357,8 @@ document.querySelectorAll('a[href="#account"]').forEach(link => {
     link.addEventListener('click', () => updateFSM(currentAccount ? 'wallet' : 'login'));
 });
 
-document.getElementById('reset-demo').addEventListener('click', () => {
-    safeRemove('bookings');
+document.getElementById('reset-demo').addEventListener('click', async () => {
+    await clearBookingRecords();
     safeRemove('ticketImages');
     selectedSeatIds = [];
     activeBlock = null;
@@ -879,6 +1367,7 @@ document.getElementById('reset-demo').addEventListener('click', () => {
     renderSeatMap();
     renderSummaries();
     renderAccount();
+    renderAdminBookings();
     showToast('예매 데이터를 초기화했습니다.');
 });
 
@@ -905,13 +1394,28 @@ document.querySelectorAll('.filter').forEach(button => {
 setupMemberFilters();
 setupProgramAccordion();
 setupAccountEvents();
-renderDday();
-renderSeatMap();
-renderSummaries();
-renderSeatStatus();
-renderAccount();
-updateAccountNote();
-if (currentAccount) {
-    syncBookingFormWithAccount();
+setupAdminEvents();
+
+function renderAppFromCache() {
+    renderSeatMap();
+    renderSummaries();
+    renderSeatStatus();
+    renderAccount();
+    renderAdminBookings();
+    updateAccountNote();
+    if (currentAccount) {
+        syncBookingFormWithAccount();
+    }
 }
-updateFSM('home');
+
+async function initApp() {
+    renderDday();
+    renderAppFromCache();
+    updateFSM('home');
+
+    await initFirebaseStorage();
+    renderAppFromCache();
+    updateFSM('home');
+}
+
+initApp();

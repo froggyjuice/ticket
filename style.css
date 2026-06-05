@@ -502,6 +502,7 @@ a {
 }
 
 .account-grid,
+.admin-grid,
 .logic-grid {
     display: grid;
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -510,6 +511,7 @@ a {
 }
 
 .account-card,
+.admin-card,
 .logic-panel {
     min-width: 0;
     padding: 24px;
@@ -520,12 +522,14 @@ a {
 }
 
 .account-card h3,
+.admin-card h3,
 .logic-panel h3 {
     font-size: 22px;
     line-height: 1.25;
 }
 
-.account-card p {
+.account-card p,
+.admin-card p {
     margin-top: 8px;
     color: var(--muted);
     font-weight: 700;
@@ -599,7 +603,41 @@ a {
     gap: 8px;
 }
 
+.seat-cancel-list {
+    display: grid;
+    gap: 8px;
+}
+
+.seat-cancel-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #ffffff;
+}
+
+.seat-cancel-row strong {
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.seat-cancel-row button {
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid #f1b8b8;
+    border-radius: var(--radius);
+    background: #fff4f4;
+    color: var(--red);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
 .wallet-ticket-actions button,
+.admin-action-button,
 .ghost-link {
     min-height: 38px;
     display: inline-flex;
@@ -614,6 +652,64 @@ a {
     border: 1px solid var(--line-strong);
     background: #ffffff;
     color: var(--text);
+}
+
+.wallet-ticket-actions button[data-cancel-booking],
+.admin-action-button.cancel {
+    border-color: #f1b8b8;
+    background: #fff4f4;
+    color: var(--red);
+}
+
+.db-status {
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel-muted);
+    font-size: 13px;
+}
+
+.db-status.is-online {
+    border-color: #bfe5d3;
+    background: #eefaf3;
+    color: var(--green);
+}
+
+.db-status.is-local {
+    border-color: #ead3a6;
+    background: #fff8ea;
+    color: #8a5510;
+}
+
+.admin-bookings {
+    display: grid;
+    gap: 10px;
+}
+
+.admin-booking-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel-muted);
+}
+
+.admin-booking-row span {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.admin-booking-row strong {
+    display: block;
+    margin-top: 3px;
+    font-size: 14px;
+    line-height: 1.35;
+    word-break: keep-all;
 }
 
 .ghost-link {
@@ -1403,6 +1499,7 @@ select:focus {
     .member-grid,
     .concert-detail-grid,
     .account-grid,
+    .admin-grid,
     .logic-grid,
     .seat-status-grid {
         grid-template-columns: 1fr;
@@ -1518,6 +1615,7 @@ select:focus {
 
     .concert-detail-grid,
     .account-grid,
+    .admin-grid,
     .logic-grid,
     .seat-status-grid {
         grid-template-columns: 1fr;
@@ -1525,8 +1623,13 @@ select:focus {
 
     .detail-panel,
     .account-card,
+    .admin-card,
     .logic-panel {
         padding: 18px;
+    }
+
+    .admin-booking-row {
+        grid-template-columns: 1fr;
     }
 
     .program-trigger {
@@ -1539,7 +1642,8 @@ select:focus {
     }
 
     .wallet-header,
-    .complete-actions {
+    .complete-actions,
+    .seat-cancel-row {
         align-items: stretch;
         flex-direction: column;
     }

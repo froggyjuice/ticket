@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="HEXA 오케스트라 공연 정보, 단원 소개, 곡 소개, 연지홀 좌석 예매를 제공하는 관현악단 웹사이트입니다.">
     <title>HEXA 오케스트라</title>
-    <link rel="stylesheet" href="style.css?v=7">
+    <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
     <header class="site-header">
@@ -21,6 +21,7 @@
             <a href="#members">단원소개</a>
             <a href="#program">곡소개</a>
             <a href="#account">내 티켓</a>
+            <a href="#admin">관리자</a>
             <button class="nav-ticket" type="button" data-open-ticket>티켓 예매</button>
         </nav>
     </header>
@@ -97,8 +98,8 @@
                 </article>
                 <article class="show-card">
                     <span>예매 방식</span>
-                    <h3>블록 선택 후 좌석 선택</h3>
-                    <p>원하는 블록을 먼저 고르고 확대된 좌석표에서 좌석을 선택합니다.</p>
+                    <h3>무료 좌석 예매</h3>
+                    <p>원하는 블록을 먼저 고르고 확대된 좌석표에서 좌석을 선택합니다. 입장료는 무료입니다.</p>
                 </article>
             </div>
         </section>
@@ -252,12 +253,48 @@
             </div>
         </section>
 
+        <section id="admin" class="site-section admin-section">
+            <div class="section-title-row">
+                <div>
+                    <p class="section-kicker">Admin</p>
+                    <h2>관리자 모드</h2>
+                </div>
+            </div>
+
+            <div class="admin-grid">
+                <article class="admin-card">
+                    <h3>관리자 로그인</h3>
+                    <p>예매자 이름, 전화번호, 좌석 정보를 확인하고 잘못된 예매를 바로 취소할 수 있습니다.</p>
+                    <p id="db-status" class="db-status">DB 상태 확인 중</p>
+                    <form id="admin-form" class="account-form">
+                        <label>
+                            관리자 코드
+                            <input id="admin-pin" type="password" placeholder="0000" autocomplete="off" required>
+                        </label>
+                        <button class="primary-button" type="submit">관리자 모드 열기</button>
+                    </form>
+                </article>
+
+                <article id="admin-panel" class="admin-card is-hidden">
+                    <div class="wallet-header">
+                        <div>
+                            <span>예약 관리</span>
+                            <h3>전체 예매 목록</h3>
+                            <p>좌석 - 이름 - 전화번호 기준으로 저장된 예매 내역입니다.</p>
+                        </div>
+                        <button id="admin-logout" class="ghost-button" type="button">관리자 닫기</button>
+                    </div>
+                    <div id="admin-bookings" class="admin-bookings"></div>
+                </article>
+            </div>
+        </section>
+
         <section id="ticketing" class="site-section ticket-section">
             <div class="ticket-gateway">
                 <div>
                     <p class="section-kicker">Ticket</p>
                     <h2>연지홀 좌석 예매</h2>
-                    <p>가블록, 나블록, 다블록 중 하나를 고른 뒤 확대된 좌석표에서 원하는 좌석을 선택합니다.</p>
+                    <p>가블록, 나블록, 다블록 중 하나를 고른 뒤 확대된 좌석표에서 원하는 좌석을 선택합니다. 예매 금액은 무료입니다.</p>
                 </div>
                 <button class="primary-button gateway-button" type="button" data-open-ticket>예매 화면 열기</button>
             </div>
@@ -292,14 +329,13 @@
                                     <button class="filter" data-floor="2F" type="button">2층</button>
                                 </div>
 
-                                <p id="block-helper" class="block-helper">블록을 먼저 선택하면 해당 블록 좌석이 확대됩니다.</p>
+                                <p id="block-helper" class="block-helper">블록을 먼저 선택한 뒤 한 좌석만 선택할 수 있습니다.</p>
                                 <button id="back-blocks" class="ghost-button full is-hidden" type="button">블록 전체 보기</button>
 
                                 <div class="legend">
                                     <span><i class="legend-dot available"></i>선택 가능</span>
                                     <span><i class="legend-dot selected"></i>선택 좌석</span>
                                     <span><i class="legend-dot reserved"></i>예매 완료</span>
-                                    <span><i class="legend-dot blocked"></i>선택 불가</span>
                                 </div>
                             </aside>
 
@@ -335,7 +371,7 @@
                                         <input id="buyer-phone" type="tel" placeholder="010-0000-0000" autocomplete="tel" required>
                                     </label>
                                     <label class="agree-row">
-                                        <input id="agree-check" type="checkbox" required>
+                                        <input id="agree-check" type="checkbox">
                                         선택한 좌석 예매 내용을 확인했습니다.
                                     </label>
                                 </form>
@@ -346,7 +382,7 @@
                                 <p id="confirm-message" class="confirm-message"></p>
                                 <div id="summary-payment" class="summary-list"></div>
                                 <button id="back-seat" class="ghost-button full" type="button">좌석 다시 선택</button>
-                                <button id="complete-booking" class="primary-button" type="button">예매 완료하기</button>
+                                <button id="complete-booking" class="primary-button" type="button" onclick="completeBooking(event)">예매 완료하기</button>
                             </aside>
                         </div>
                     </section>
@@ -375,6 +411,7 @@
     </footer>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=7"></script>
+    <script src="firebase-config.js?v=2"></script>
+    <script src="app.js?v=18"></script>
 </body>
 </html>
