@@ -1,8 +1,26 @@
 {
   "rules": {
-    "ticketBookings": {
+    ".read": false,
+    ".write": false,
+    "seatReservations": {
       ".read": true,
-      ".write": true
+      "$seatId": {
+        ".write": "auth != null && ((!data.exists() && newData.exists() && newData.child('uid').val() === auth.uid && newData.child('seatId').val() === $seatId) || (data.exists() && data.child('uid').val() === auth.uid && !newData.exists()))",
+        ".validate": "!newData.exists() || (newData.hasChildren(['bookingNo', 'recordId', 'uid', 'seatId', 'seatLabel', 'performanceAt', 'createdAt']) && newData.child('uid').isString() && newData.child('uid').val() === auth.uid && newData.child('seatId').isString() && newData.child('seatId').val() === $seatId && newData.child('seatLabel').isString() && newData.child('bookingNo').isString() && newData.child('recordId').isString() && newData.child('performanceAt').isString() && newData.child('createdAt').isString())"
+      }
+    },
+    "userBookings": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$recordId": {
+          ".validate": "!newData.exists() || (newData.hasChildren(['id', 'bookingNo', 'uid', 'name', 'phone', 'seatId', 'seatLabel', 'createdAt']) && newData.child('uid').isString() && newData.child('uid').val() === auth.uid && newData.child('id').isString() && newData.child('bookingNo').isString() && newData.child('name').isString() && newData.child('phone').isString() && newData.child('seatId').isString() && newData.child('seatLabel').isString() && newData.child('createdAt').isString())"
+        }
+      }
+    },
+    "ticketBookings": {
+      ".read": false,
+      ".write": false
     }
   }
 }

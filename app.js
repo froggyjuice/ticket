@@ -61,8 +61,12 @@ let selectedSeatIds = [];
 let currentCompletedBooking = null;
 let currentAccount = safeGet('currentAccount', null);
 let bookingsCache = [];
+let seatReservationsCache = {};
 let firebaseDb = null;
 let firebaseApi = null;
+let firebaseAuth = null;
+let authApi = null;
+let currentFirebaseUser = null;
 let storageMode = 'local';
 let adminUnlocked = false;
 let isCompletingBooking = false;
@@ -175,7 +179,7 @@ function updateDbStatus(message) {
     dbStatus.classList.remove('is-online', 'is-local');
     if (storageMode === 'firebase') {
         dbStatus.classList.add('is-online');
-        dbStatus.textContent = message || 'Firebase Realtime Database 연결됨: 좌석, 이름, 전화번호가 DB에 저장됩니다.';
+        dbStatus.textContent = message || 'Firebase 보안 모드 연결됨: 좌석 상태는 공개, 이름/전화번호는 본인 경로에만 저장됩니다.';
         return;
     }
 
@@ -183,8 +187,16 @@ function updateDbStatus(message) {
     dbStatus.textContent = message || 'Firebase 설정값이 비어 있어 현재는 브라우저 로컬 저장소에 저장됩니다.';
 }
 
-function bookingsPath() {
-    return window.FIREBASE_BOOKINGS_PATH || 'ticketBookings';
+function seatReservationsPath() {
+    return window.FIREBASE_SEAT_RESERVATIONS_PATH || 'seatReservations';
+}
+
+function userBookingsRootPath() {
+    return window.FIREBASE_USER_BOOKINGS_PATH || 'userBookings';
+}
+
+function userBookingsPath(uid = currentFirebaseUser?.uid) {
+    return uid ? `${userBookingsRootPath()}/${uid}` : userBookingsRootPath();
 }
 
 function firebaseDatabaseUrl() {
@@ -198,7 +210,10 @@ function firebaseErrorMessage(error) {
         return 'Realtime Database URL 지역이 맞지 않습니다. firebase-config.js의 databaseURL을 콘솔에 표시된 URL과 맞춰 주세요.';
     }
     if (message.includes('permission_denied') || message.includes('permission-denied') || message.includes('Permission denied')) {
-        return 'Realtime Database 보안 규칙이 읽기/쓰기를 막고 있습니다. ticketBookings 경로 규칙을 확인해 주세요.';
+        return 'Realtime Database 보안 규칙이 읽기/쓰기를 막고 있습니다. 인증 상태와 DB 규칙을 확인해 주세요.';
+    }
+    if (message.includes('auth/operation-not-allowed') || message.includes('auth/configuration-not-found') || message.includes('CONFIGURATION_NOT_FOUND')) {
+        return 'Firebase Authentication 또는 Anonymous Auth가 꺼져 있습니다. Firebase Console > Authentication에서 시작하기를 누르고 익명 로그인을 켜 주세요.';
     }
     if (message.includes('Failed to fetch') || message.includes('network')) {
         return 'Firebase 네트워크 연결에 실패했습니다. 인터넷 연결 또는 브라우저 차단 설정을 확인해 주세요.';
@@ -216,14 +231,19 @@ async function initFirebaseStorage() {
     }
 
     try {
-        const [appModule, databaseModule] = await Promise.all([
+        const [appModule, databaseModule, authModule] = await Promise.all([
             import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`),
-            import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-database.js`)
+            import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-database.js`),
+            import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`)
         ]);
 
         const app = appModule.initializeApp(window.FIREBASE_CONFIG);
         firebaseDb = databaseModule.getDatabase(app, firebaseDatabaseUrl());
         firebaseApi = databaseModule;
+        firebaseAuth = authModule.getAuth(app);
+        authApi = authModule;
+        const credential = await authModule.signInAnonymously(firebaseAuth);
+        currentFirebaseUser = credential.user;
         storageMode = 'firebase';
         await refreshBookingsFromFirebase();
         lastFirebaseError = '';
@@ -232,39 +252,48 @@ async function initFirebaseStorage() {
         storageMode = 'local';
         firebaseDb = null;
         firebaseApi = null;
+        firebaseAuth = null;
+        authApi = null;
+        currentFirebaseUser = null;
+        seatReservationsCache = {};
         bookingsCache = [];
         safeSet('bookings', bookingsCache);
         lastFirebaseError = firebaseErrorMessage(error);
-        updateDbStatus(`${lastFirebaseError} 현재는 브라우저 로컬 저장소에 저장됩니다.`);
+        updateDbStatus(`${lastFirebaseError} Firebase에는 개인정보를 저장하지 않고 현재 브라우저에만 임시 저장됩니다.`);
     }
 }
 
 async function refreshBookingsFromFirebase() {
     if (!firebaseDb || !firebaseApi) return;
 
-    const snapshot = await firebaseApi.get(firebaseApi.ref(firebaseDb, bookingsPath()));
-    const values = snapshot.exists() ? snapshot.val() : {};
-    const records = Object.entries(values || {})
+    const reservationsSnapshot = await firebaseApi.get(firebaseApi.ref(firebaseDb, seatReservationsPath()));
+    const reservationValues = reservationsSnapshot.exists() ? reservationsSnapshot.val() : {};
+    seatReservationsCache = Object.fromEntries(
+        Object.entries(reservationValues || {})
+            .filter(([, value]) => value && typeof value === 'object')
+            .map(([key, value]) => [key, {
+                ...value,
+                seatId: value.seatId || key
+            }])
+    );
+
+    if (!currentFirebaseUser) {
+        bookingsCache = [];
+        safeSet('bookings', bookingsCache);
+        return;
+    }
+
+    const userBookingsSnapshot = await firebaseApi.get(firebaseApi.ref(firebaseDb, userBookingsPath()));
+    const userBookingValues = userBookingsSnapshot.exists() ? userBookingsSnapshot.val() : {};
+    const records = Object.entries(userBookingValues || {})
         .filter(([, value]) => value && typeof value === 'object')
         .map(([key, value]) => ({
             ...value,
             id: value.id || key,
             __docId: key
         }));
-    const legacyBookings = records.filter(record => !record.seatId && Array.isArray(record.seats));
 
-    if (legacyBookings.length > 0) {
-        await Promise.all(legacyBookings.flatMap(booking => [
-            ...seatRecordsFromBooking(booking).map(record => (
-                firebaseApi.set(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${record.id}`), record)
-            )),
-            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${booking.__docId}`))
-        ]));
-    }
-
-    const seatRecords = records.flatMap(record => (
-        record.seatId ? [record] : seatRecordsFromBooking(record)
-    ));
+    const seatRecords = records.filter(record => record.seatId);
     bookingsCache = groupSeatRecords(seatRecords);
     safeSet('bookings', bookingsCache);
 }
@@ -274,18 +303,44 @@ async function saveBookingRecord(booking) {
     safeSet('bookings', bookingsCache);
 
     if (firebaseDb && firebaseApi) {
+        if (!currentFirebaseUser) {
+            lastFirebaseError = 'Firebase 익명 인증이 완료되지 않았습니다.';
+            updateDbStatus(`${lastFirebaseError} 예매는 현재 브라우저에만 임시 저장했습니다.`);
+            return false;
+        }
+
+        const privateRecords = seatRecordsFromBooking(booking);
+        const publicRecords = seatReservationRecordsFromBooking(booking);
+        const reservedSeats = [];
+
         try {
-            await Promise.all(seatRecordsFromBooking(booking).map(record => (
-                firebaseApi.set(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${record.id}`), record)
+            for (const record of publicRecords) {
+                const result = await firebaseApi.runTransaction(
+                    firebaseApi.ref(firebaseDb, `${seatReservationsPath()}/${record.seatId}`),
+                    currentValue => (currentValue === null ? record : undefined)
+                );
+
+                if (!result.committed) {
+                    throw new Error('이미 예매된 좌석입니다.');
+                }
+
+                reservedSeats.push(record.seatId);
+            }
+
+            await Promise.all(privateRecords.map(record => (
+                firebaseApi.set(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`), record)
             )));
+            await refreshBookingsFromFirebase();
             return true;
         } catch (error) {
             console.warn('Firebase booking save failed. Falling back to local storage.', error);
+            await Promise.all(reservedSeats.map(seatId => (
+                firebaseApi.remove(firebaseApi.ref(firebaseDb, `${seatReservationsPath()}/${seatId}`))
+            )));
+            bookingsCache = bookingsCache.filter(item => item.bookingNo !== booking.bookingNo);
+            safeSet('bookings', bookingsCache);
             lastFirebaseError = firebaseErrorMessage(error);
-            storageMode = 'local';
-            firebaseDb = null;
-            firebaseApi = null;
-            updateDbStatus(`${lastFirebaseError} 예매는 브라우저 로컬 저장소에 저장했습니다.`);
+            updateDbStatus(`${lastFirebaseError} Firebase에는 이 예매를 저장하지 않았습니다.`);
             return false;
         }
     }
@@ -301,7 +356,7 @@ async function updateBookingRecord(updatedBooking) {
 
     if (firebaseDb && firebaseApi) {
         await Promise.all(seatRecordsFromBooking(updatedBooking).map(record => (
-            firebaseApi.set(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${record.id}`), record)
+            firebaseApi.set(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`), record)
         )));
     }
 }
@@ -312,15 +367,19 @@ async function deleteBookingRecord(bookingNo) {
     safeSet('bookings', bookingsCache);
 
     if (firebaseDb && firebaseApi && booking) {
-        await Promise.all(booking.seats.map(seat => (
-            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${seatBookingId(bookingNo, seat.id)}`))
-        )));
+        await Promise.all(booking.seats.flatMap(seat => [
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${seatReservationsPath()}/${seat.id}`)),
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${seatBookingId(bookingNo, seat.id)}`))
+        ]));
     }
 }
 
 async function deleteSeatRecord(bookingNo, seatId) {
     if (firebaseDb && firebaseApi) {
-        await firebaseApi.remove(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${seatBookingId(bookingNo, seatId)}`));
+        await Promise.all([
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${seatReservationsPath()}/${seatId}`)),
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${seatBookingId(bookingNo, seatId)}`))
+        ]);
     }
 }
 
@@ -330,15 +389,17 @@ async function clearBookingRecords() {
     safeSet('bookings', bookingsCache);
 
     if (firebaseDb && firebaseApi) {
-        await Promise.all(bookingRecords.map(record => (
-            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${bookingsPath()}/${record.id}`))
-        )));
+        await Promise.all(bookingRecords.flatMap(record => [
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${seatReservationsPath()}/${record.seatId}`)),
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`))
+        ]));
     }
 }
 
 function getReservedSeatIds() {
+    const remote = Object.keys(seatReservationsCache);
     const saved = getBookings().flatMap(booking => booking.seats.map(seat => seat.id));
-    return new Set(saved);
+    return new Set([...remote, ...saved]);
 }
 
 function formatMoney(value) {
@@ -714,6 +775,7 @@ function bookingFromSeatRecords(records) {
         performance: first.performance,
         performanceAt: first.performanceAt,
         accountKey: first.accountKey,
+        uid: first.uid,
         name: first.name,
         phone: first.phone,
         buyer: {
@@ -750,12 +812,25 @@ function seatRecordsFromBooking(booking) {
         performance: booking.performance,
         performanceAt: booking.performanceAt,
         accountKey: booking.accountKey,
+        uid: booking.uid || currentFirebaseUser?.uid || '',
         name: booking.name || booking.buyer.name,
         phone: booking.phone || booking.buyer.phone,
         seatId: seat.id,
         seatLabel: seat.label,
         createdAt: booking.createdAt,
         updatedAt: booking.updatedAt || booking.createdAt
+    }));
+}
+
+function seatReservationRecordsFromBooking(booking) {
+    return booking.seats.map(seat => ({
+        bookingNo: booking.bookingNo,
+        recordId: seatBookingId(booking.bookingNo, seat.id),
+        uid: currentFirebaseUser?.uid || '',
+        seatId: seat.id,
+        seatLabel: seat.label,
+        performanceAt: booking.performanceAt,
+        createdAt: booking.createdAt
     }));
 }
 
@@ -796,6 +871,7 @@ async function completeBooking(event) {
         performance: PERFORMANCE_NAME,
         performanceAt: PERFORMANCE_AT,
         accountKey: account.key,
+        uid: currentFirebaseUser?.uid || '',
         seatIds,
         seatLabels,
         name: buyer.name,
@@ -829,11 +905,11 @@ async function completeBooking(event) {
         updateAccountNote();
         savePromise.then(savedToFirebase => {
             if (!savedToFirebase) {
-                showToast('예매는 완료됐고, Firebase 저장 상태는 관리자 영역에서 확인해 주세요.');
+                showToast('Firebase 저장에 실패했습니다. 좌석 상태를 새로고침 후 다시 확인해 주세요.');
             }
         }).catch(error => {
             console.warn('Booking save failed after completion screen.', error);
-            showToast('예매는 완료됐고, Firebase 저장 상태는 관리자 영역에서 확인해 주세요.');
+            showToast('Firebase 저장에 실패했습니다. 좌석 상태를 새로고침 후 다시 확인해 주세요.');
         });
     } catch (error) {
         console.warn('Post-booking refresh failed.', error);
@@ -1089,6 +1165,16 @@ function renderSeatStatus() {
 
 function renderAdminBookings() {
     if (!adminBookings || !adminUnlocked) return;
+
+    if (storageMode === 'firebase') {
+        adminBookings.innerHTML = `
+            <p class="wallet-empty">
+                public 보안 모드에서는 웹 관리자 화면의 전체 개인정보 조회를 끕니다.
+                예매자 정보 확인은 Firebase Console의 userBookings 경로에서 진행해 주세요.
+            </p>
+        `;
+        return;
+    }
 
     const bookings = getBookings();
     if (bookings.length === 0) {
