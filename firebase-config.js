@@ -12,3 +12,4 @@ window.FIREBASE_CONFIG = {
 
 window.FIREBASE_SEAT_RESERVATIONS_PATH = "seatReservations";
 window.FIREBASE_USER_BOOKINGS_PATH = "userBookings";
+window.FIREBASE_ACCOUNT_BOOKINGS_PATH = "accountBookings";

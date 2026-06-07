@@ -636,6 +636,20 @@ a {
     white-space: nowrap;
 }
 
+.seat-cancel-row span {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel-muted);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
 .wallet-ticket-actions button,
 .admin-action-button,
 .ghost-link {

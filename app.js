@@ -122,6 +122,22 @@ function accountKey(name, phone) {
     return `${name.trim()}::${normalizePhone(phone)}`;
 }
 
+async function sha256Hex(value) {
+    if (window.crypto?.subtle && window.TextEncoder) {
+        const bytes = new TextEncoder().encode(value);
+        const hash = await window.crypto.subtle.digest('SHA-256', bytes);
+        return [...new Uint8Array(hash)]
+            .map(byte => byte.toString(16).padStart(2, '0'))
+            .join('');
+    }
+
+    return `fallback-${Math.abs(hashString(value))}`;
+}
+
+async function accountLookupKey(name, phone) {
+    return `v1_${await sha256Hex(accountKey(name, phone))}`;
+}
+
 function makeAccount(name, phone) {
     return {
         name: name.trim(),
@@ -205,6 +221,14 @@ function userBookingsRootPath() {
 
 function userBookingsPath(uid = currentFirebaseUser?.uid) {
     return uid ? `${userBookingsRootPath()}/${uid}` : userBookingsRootPath();
+}
+
+function accountBookingsRootPath() {
+    return window.FIREBASE_ACCOUNT_BOOKINGS_PATH || 'accountBookings';
+}
+
+function accountBookingsPath(lookupKey) {
+    return `${accountBookingsRootPath()}/${lookupKey}`;
 }
 
 function firebaseDatabaseUrl() {
@@ -313,6 +337,33 @@ async function refreshBookingsFromFirebase() {
     const seatRecords = records.filter(record => record.seatId);
     bookingsCache = groupSeatRecords(seatRecords);
     safeSet('bookings', bookingsCache);
+}
+
+async function refreshAccountBookingsFromFirebase(account = currentAccount) {
+    if (!firebaseDb || !firebaseApi || !account) return false;
+
+    try {
+        const lookupKey = await accountLookupKey(account.name, account.phone);
+        const snapshot = await firebaseApi.get(firebaseApi.ref(firebaseDb, accountBookingsPath(lookupKey)));
+        const values = snapshot.exists() ? snapshot.val() : {};
+        const records = Object.entries(values || {})
+            .filter(([, value]) => value && typeof value === 'object')
+            .map(([key, value]) => ({
+                ...value,
+                id: value.id || key,
+                lookupKey: value.lookupKey || lookupKey,
+                __docId: key
+            }))
+            .filter(record => record.seatId && bookingBelongsToAccount({ accountKey: record.accountKey, buyer: { name: record.name, phone: record.phone } }, account));
+
+        bookingsCache = groupSeatRecords(records);
+        safeSet('bookings', bookingsCache);
+        return true;
+    } catch (error) {
+        console.warn('Account booking lookup failed.', error);
+        showToast(firebaseErrorMessage(error));
+        return false;
+    }
 }
 
 function setAdminStatus(message, state = 'idle') {
@@ -424,7 +475,10 @@ async function cancelAdminSeat(recordId, seatId, uid) {
     try {
         await Promise.all([
             firebaseApi.remove(firebaseApi.ref(adminFirebaseDb, `${seatReservationsPath()}/${seatId}`)),
-            firebaseApi.remove(firebaseApi.ref(adminFirebaseDb, `${userBookingsRootPath()}/${uid}/${recordId}`))
+            firebaseApi.remove(firebaseApi.ref(adminFirebaseDb, `${userBookingsRootPath()}/${uid}/${recordId}`)),
+            ...(record.lookupKey ? [
+                firebaseApi.remove(firebaseApi.ref(adminFirebaseDb, `${accountBookingsPath(record.lookupKey)}/${recordId}`))
+            ] : [])
         ]);
         await refreshBookingsFromFirebase();
         await loadAdminBookings();
@@ -467,9 +521,12 @@ async function saveBookingRecord(booking) {
                 reservedSeats.push(record.seatId);
             }
 
-            await Promise.all(privateRecords.map(record => (
-                firebaseApi.set(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`), record)
-            )));
+            await Promise.all(privateRecords.flatMap(record => [
+                firebaseApi.set(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`), record),
+                ...(record.lookupKey ? [
+                    firebaseApi.set(firebaseApi.ref(firebaseDb, `${accountBookingsPath(record.lookupKey)}/${record.id}`), record)
+                ] : [])
+            ]));
             await refreshBookingsFromFirebase();
             return true;
         } catch (error) {
@@ -495,30 +552,43 @@ async function updateBookingRecord(updatedBooking) {
     safeSet('bookings', bookingsCache);
 
     if (firebaseDb && firebaseApi) {
-        await Promise.all(seatRecordsFromBooking(updatedBooking).map(record => (
-            firebaseApi.set(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`), record)
-        )));
+        await Promise.all(seatRecordsFromBooking(updatedBooking).flatMap(record => [
+            firebaseApi.set(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`), record),
+            ...(record.lookupKey ? [
+                firebaseApi.set(firebaseApi.ref(firebaseDb, `${accountBookingsPath(record.lookupKey)}/${record.id}`), record)
+            ] : [])
+        ]));
     }
 }
 
 async function deleteBookingRecord(bookingNo) {
     const booking = bookingsCache.find(item => item.bookingNo === bookingNo);
+    const records = booking ? seatRecordsFromBooking(booking) : [];
     bookingsCache = bookingsCache.filter(booking => booking.bookingNo !== bookingNo);
     safeSet('bookings', bookingsCache);
 
     if (firebaseDb && firebaseApi && booking) {
-        await Promise.all(booking.seats.flatMap(seat => [
-            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${seatReservationsPath()}/${seat.id}`)),
-            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${seatBookingId(bookingNo, seat.id)}`))
+        await Promise.all(records.flatMap(record => [
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${seatReservationsPath()}/${record.seatId}`)),
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`)),
+            ...(record.lookupKey ? [
+                firebaseApi.remove(firebaseApi.ref(firebaseDb, `${accountBookingsPath(record.lookupKey)}/${record.id}`))
+            ] : [])
         ]));
     }
 }
 
 async function deleteSeatRecord(bookingNo, seatId) {
+    const booking = bookingsCache.find(item => item.bookingNo === bookingNo);
+    const record = booking ? seatRecordsFromBooking(booking).find(item => item.seatId === seatId) : null;
+
     if (firebaseDb && firebaseApi) {
         await Promise.all([
             firebaseApi.remove(firebaseApi.ref(firebaseDb, `${seatReservationsPath()}/${seatId}`)),
-            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${seatBookingId(bookingNo, seatId)}`))
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${seatBookingId(bookingNo, seatId)}`)),
+            ...(record?.lookupKey ? [
+                firebaseApi.remove(firebaseApi.ref(firebaseDb, `${accountBookingsPath(record.lookupKey)}/${record.id}`))
+            ] : [])
         ]);
     }
 }
@@ -531,7 +601,10 @@ async function clearBookingRecords() {
     if (firebaseDb && firebaseApi) {
         await Promise.all(bookingRecords.flatMap(record => [
             firebaseApi.remove(firebaseApi.ref(firebaseDb, `${seatReservationsPath()}/${record.seatId}`)),
-            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`))
+            firebaseApi.remove(firebaseApi.ref(firebaseDb, `${userBookingsPath()}/${record.id}`)),
+            ...(record.lookupKey ? [
+                firebaseApi.remove(firebaseApi.ref(firebaseDb, `${accountBookingsPath(record.lookupKey)}/${record.id}`))
+            ] : [])
         ]));
     }
 }
@@ -915,6 +988,7 @@ function bookingFromSeatRecords(records) {
         performance: first.performance,
         performanceAt: first.performanceAt,
         accountKey: first.accountKey,
+        lookupKey: first.lookupKey,
         uid: first.uid,
         name: first.name,
         phone: first.phone,
@@ -952,6 +1026,7 @@ function seatRecordsFromBooking(booking) {
         performance: booking.performance,
         performanceAt: booking.performanceAt,
         accountKey: booking.accountKey,
+        lookupKey: booking.lookupKey || '',
         uid: booking.uid || currentFirebaseUser?.uid || '',
         name: booking.name || booking.buyer.name,
         phone: booking.phone || booking.buyer.phone,
@@ -1004,6 +1079,7 @@ async function completeBooking(event) {
     }
 
     const account = makeAccount(buyer.name, buyer.phone);
+    const lookupKey = await accountLookupKey(account.name, account.phone);
     const seatIds = selectedSeats.map(seat => seat.id);
     const seatLabels = selectedSeats.map(formatSeat);
     const booking = {
@@ -1011,6 +1087,7 @@ async function completeBooking(event) {
         performance: PERFORMANCE_NAME,
         performanceAt: PERFORMANCE_AT,
         accountKey: account.key,
+        lookupKey,
         uid: currentFirebaseUser?.uid || '',
         seatIds,
         seatLabels,
@@ -1102,12 +1179,16 @@ function renderDday() {
     heroDate.textContent = PERFORMANCE_DATE_LABEL;
 }
 
-function setCurrentAccount(account, showMessage = true) {
+async function setCurrentAccount(account, showMessage = true) {
     currentAccount = account;
     safeSet('currentAccount', currentAccount);
     loginName.value = account.name;
     loginPhone.value = account.phone;
     syncBookingFormWithAccount();
+    if (storageMode === 'firebase') {
+        ticketWallet.innerHTML = '<p class="wallet-empty">티켓을 불러오는 중입니다.</p>';
+        await refreshAccountBookingsFromFirebase(account);
+    }
     renderAccount();
     updateAccountNote();
     updateFSM('wallet');
@@ -1133,6 +1214,10 @@ function bookingBelongsToAccount(booking, account) {
 
 function accountBookings() {
     return getBookings().filter(booking => bookingBelongsToAccount(booking, currentAccount));
+}
+
+function canManageBooking(booking) {
+    return !booking.uid || booking.uid === currentFirebaseUser?.uid;
 }
 
 function renderAccount() {
@@ -1162,6 +1247,7 @@ function renderAccount() {
 
     ticketWallet.innerHTML = bookings.map(booking => {
         const savedLabel = images[booking.bookingNo] ? '저장됨' : '이미지 저장';
+        const canCancel = canManageBooking(booking);
         return `
             <article class="wallet-ticket">
                 <h4>${escapeHtml(booking.performance)}</h4>
@@ -1171,13 +1257,15 @@ function renderAccount() {
                     ${booking.seats.map(seat => `
                         <div class="seat-cancel-row">
                             <strong>${escapeHtml(seat.label)}</strong>
-                            <button type="button" data-booking-no="${escapeHtml(booking.bookingNo)}" data-cancel-seat="${escapeHtml(seat.id)}">이 좌석 취소</button>
+                            ${canCancel
+                                ? `<button type="button" data-booking-no="${escapeHtml(booking.bookingNo)}" data-cancel-seat="${escapeHtml(seat.id)}">이 좌석 취소</button>`
+                                : '<span>관리자 취소 가능</span>'}
                         </div>
                     `).join('')}
                 </div>
                 <div class="wallet-ticket-actions">
                     <button type="button" data-save-ticket="${escapeHtml(booking.bookingNo)}">${savedLabel}</button>
-                    <button type="button" data-cancel-booking="${escapeHtml(booking.bookingNo)}">전체 취소</button>
+                    ${canCancel ? `<button type="button" data-cancel-booking="${escapeHtml(booking.bookingNo)}">전체 취소</button>` : ''}
                     <button type="button" data-wallet-book>추가 예매</button>
                 </div>
             </article>
@@ -1558,14 +1646,14 @@ function setupProgramAccordion() {
 }
 
 function setupAccountEvents() {
-    loginForm.addEventListener('submit', event => {
+    loginForm.addEventListener('submit', async event => {
         event.preventDefault();
         const account = makeAccount(loginName.value, loginPhone.value);
         if (!account.name || normalizePhone(account.phone).length < 10) {
             showToast('이름과 전화번호를 확인해 주세요.');
             return;
         }
-        setCurrentAccount(account);
+        await setCurrentAccount(account);
     });
 
     logoutAccount.addEventListener('click', clearCurrentAccount);
@@ -1742,6 +1830,9 @@ async function initApp() {
     updateFSM('home');
 
     await initFirebaseStorage();
+    if (currentAccount && storageMode === 'firebase') {
+        await refreshAccountBookingsFromFirebase(currentAccount);
+    }
     renderAppFromCache();
     updateFSM('home');
 }
