@@ -2,7 +2,6 @@ const PRICE = 0;
 const PERFORMANCE_NAME = '제1회 HEXA 오케스트라 정기연주회';
 const PERFORMANCE_AT = '2026-06-19T19:30:00+09:00';
 const PERFORMANCE_DATE_LABEL = '2026.06.19 금 19:30';
-const ADMIN_PIN = '0000';
 const FIREBASE_VERSION = '10.12.5';
 const BLOCK_NAMES = {
     A: '가',
@@ -50,10 +49,14 @@ const saveCompleteTicket = document.getElementById('save-complete-ticket');
 const viewWallet = document.getElementById('view-wallet');
 const dbStatus = document.getElementById('db-status');
 const adminForm = document.getElementById('admin-form');
-const adminPin = document.getElementById('admin-pin');
+const adminEmail = document.getElementById('admin-email');
+const adminPassword = document.getElementById('admin-password');
+const adminAuthStatus = document.getElementById('admin-auth-status');
 const adminPanel = document.getElementById('admin-panel');
 const adminBookings = document.getElementById('admin-bookings');
 const adminLogout = document.getElementById('admin-logout');
+const adminSearch = document.getElementById('admin-search');
+const adminRefresh = document.getElementById('admin-refresh');
 
 let currentFloor = 'all';
 let activeBlock = null;
@@ -66,9 +69,14 @@ let firebaseDb = null;
 let firebaseApi = null;
 let firebaseAuth = null;
 let authApi = null;
+let adminFirebaseDb = null;
+let adminFirebaseAuth = null;
+let adminFirebaseUser = null;
 let currentFirebaseUser = null;
 let storageMode = 'local';
 let adminUnlocked = false;
+let adminBookingRecords = [];
+let adminAccessDenied = false;
 let isCompletingBooking = false;
 let lastFirebaseError = '';
 
@@ -237,11 +245,17 @@ async function initFirebaseStorage() {
             import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`)
         ]);
 
-        const app = appModule.initializeApp(window.FIREBASE_CONFIG);
+        const existingApps = appModule.getApps();
+        const app = existingApps.find(item => item.name === '[DEFAULT]')
+            || appModule.initializeApp(window.FIREBASE_CONFIG);
+        const adminApp = existingApps.find(item => item.name === 'admin')
+            || appModule.initializeApp(window.FIREBASE_CONFIG, 'admin');
         firebaseDb = databaseModule.getDatabase(app, firebaseDatabaseUrl());
         firebaseApi = databaseModule;
         firebaseAuth = authModule.getAuth(app);
         authApi = authModule;
+        adminFirebaseDb = databaseModule.getDatabase(adminApp, firebaseDatabaseUrl());
+        adminFirebaseAuth = authModule.getAuth(adminApp);
         const credential = await authModule.signInAnonymously(firebaseAuth);
         currentFirebaseUser = credential.user;
         storageMode = 'firebase';
@@ -254,6 +268,9 @@ async function initFirebaseStorage() {
         firebaseApi = null;
         firebaseAuth = null;
         authApi = null;
+        adminFirebaseDb = null;
+        adminFirebaseAuth = null;
+        adminFirebaseUser = null;
         currentFirebaseUser = null;
         seatReservationsCache = {};
         bookingsCache = [];
@@ -296,6 +313,129 @@ async function refreshBookingsFromFirebase() {
     const seatRecords = records.filter(record => record.seatId);
     bookingsCache = groupSeatRecords(seatRecords);
     safeSet('bookings', bookingsCache);
+}
+
+function setAdminStatus(message, state = 'idle') {
+    if (!adminAuthStatus) return;
+    adminAuthStatus.textContent = message;
+    adminAuthStatus.classList.remove('is-ok', 'is-error', 'is-loading');
+    if (state !== 'idle') {
+        adminAuthStatus.classList.add(`is-${state}`);
+    }
+}
+
+function adminErrorMessage(error) {
+    const message = error?.message || String(error || '');
+    if (message.includes('auth/invalid-credential') || message.includes('auth/user-not-found') || message.includes('auth/wrong-password')) {
+        return '관리자 이메일 또는 비밀번호를 확인해 주세요.';
+    }
+    if (message.includes('auth/operation-not-allowed')) {
+        return 'Firebase Authentication에서 Email/Password 로그인을 켜 주세요.';
+    }
+    if (message.includes('permission_denied') || message.includes('Permission denied')) {
+        return '관리자 권한이 아직 없습니다. UID를 admins 경로에 등록해 주세요.';
+    }
+    return firebaseErrorMessage(error);
+}
+
+function adminUidHint() {
+    if (!adminFirebaseUser?.uid) return '';
+    return `
+        <p class="wallet-empty">
+            관리자 UID: <strong>${escapeHtml(adminFirebaseUser.uid)}</strong><br>
+            Firebase Realtime Database의 admins/${escapeHtml(adminFirebaseUser.uid)} 값을 true로 추가하면 이 계정에서 전체 목록을 볼 수 있습니다.
+        </p>
+    `;
+}
+
+function flattenAdminBookingRecords(values) {
+    return Object.entries(values || {}).flatMap(([uid, userRecords]) => (
+        Object.entries(userRecords || {})
+            .filter(([, value]) => value && typeof value === 'object' && value.seatId)
+            .map(([recordId, value]) => ({
+                ...value,
+                uid: value.uid || uid,
+                id: value.id || recordId,
+                __uid: uid,
+                __recordId: recordId
+            }))
+    )).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+
+function adminFilteredRecords() {
+    const keyword = (adminSearch?.value || '').trim().toLowerCase();
+    if (!keyword) return adminBookingRecords;
+
+    return adminBookingRecords.filter(record => (
+        [
+            record.name,
+            record.phone,
+            record.seatLabel,
+            record.bookingNo,
+            record.id
+        ].some(value => String(value || '').toLowerCase().includes(keyword))
+    ));
+}
+
+async function loadAdminBookings(showMessage = false) {
+    if (!adminBookings || !adminUnlocked) return false;
+
+    if (storageMode !== 'firebase' || !adminFirebaseDb || !firebaseApi) {
+        adminBookingRecords = [];
+        renderAdminBookings();
+        return false;
+    }
+
+    adminBookings.innerHTML = '<p class="wallet-empty">관리자 예매 목록을 불러오는 중입니다.</p>';
+    setAdminStatus('관리자 권한 확인 중', 'loading');
+
+    try {
+        const snapshot = await firebaseApi.get(firebaseApi.ref(adminFirebaseDb, userBookingsRootPath()));
+        const values = snapshot.exists() ? snapshot.val() : {};
+        adminBookingRecords = flattenAdminBookingRecords(values);
+        adminAccessDenied = false;
+        renderAdminBookings();
+        setAdminStatus('관리자 모드 연결됨', 'ok');
+        if (showMessage) showToast('관리자 예매 목록을 불러왔습니다.');
+        return true;
+    } catch (error) {
+        adminBookingRecords = [];
+        adminAccessDenied = true;
+        renderAdminBookings();
+        setAdminStatus(adminErrorMessage(error), 'error');
+        return false;
+    }
+}
+
+async function cancelAdminSeat(recordId, seatId, uid) {
+    const record = adminBookingRecords.find(item => (
+        item.__recordId === recordId && item.seatId === seatId && item.__uid === uid
+    ));
+
+    if (!record) {
+        showToast('취소할 예매 기록을 찾을 수 없습니다.');
+        return;
+    }
+
+    if (!window.confirm(`${record.seatLabel} 좌석 예매를 취소할까요?`)) {
+        return;
+    }
+
+    try {
+        await Promise.all([
+            firebaseApi.remove(firebaseApi.ref(adminFirebaseDb, `${seatReservationsPath()}/${seatId}`)),
+            firebaseApi.remove(firebaseApi.ref(adminFirebaseDb, `${userBookingsRootPath()}/${uid}/${recordId}`))
+        ]);
+        await refreshBookingsFromFirebase();
+        await loadAdminBookings();
+        renderSeatMap();
+        renderSummaries();
+        renderAccount();
+        showToast(`${record.seatLabel} 좌석 예매가 취소되었습니다.`);
+    } catch (error) {
+        setAdminStatus(adminErrorMessage(error), 'error');
+        showToast('관리자 예매 취소에 실패했습니다.');
+    }
 }
 
 async function saveBookingRecord(booking) {
@@ -1167,11 +1307,69 @@ function renderAdminBookings() {
     if (!adminBookings || !adminUnlocked) return;
 
     if (storageMode === 'firebase') {
+        if (!adminFirebaseUser) {
+            adminBookings.innerHTML = '<p class="wallet-empty">관리자 계정으로 로그인해 주세요.</p>';
+            return;
+        }
+
+        if (adminAccessDenied) {
+            adminBookings.innerHTML = adminUidHint();
+            return;
+        }
+
+        const records = adminFilteredRecords();
+        if (adminBookingRecords.length === 0) {
+            adminBookings.innerHTML = `
+                <div class="admin-summary">
+                    <strong>0석</strong>
+                    <span>현재 표시할 예매 내역이 없습니다.</span>
+                </div>
+            `;
+            return;
+        }
+
+        if (records.length === 0) {
+            adminBookings.innerHTML = `
+                <div class="admin-summary">
+                    <strong>${adminBookingRecords.length}석</strong>
+                    <span>검색 결과가 없습니다.</span>
+                </div>
+            `;
+            return;
+        }
+
         adminBookings.innerHTML = `
-            <p class="wallet-empty">
-                public 보안 모드에서는 웹 관리자 화면의 전체 개인정보 조회를 끕니다.
-                예매자 정보 확인은 Firebase Console의 userBookings 경로에서 진행해 주세요.
-            </p>
+            <div class="admin-summary">
+                <strong>${records.length}석</strong>
+                <span>전체 ${adminBookingRecords.length}석 중 표시 중</span>
+            </div>
+            ${records.map(record => `
+                <article class="admin-booking-row">
+                    <div>
+                        <span>좌석</span>
+                        <strong>${escapeHtml(record.seatLabel || record.seatId)}</strong>
+                    </div>
+                    <div>
+                        <span>이름</span>
+                        <strong>${escapeHtml(record.name || '-')}</strong>
+                    </div>
+                    <div>
+                        <span>전화번호</span>
+                        <strong>${escapeHtml(record.phone || '-')}</strong>
+                    </div>
+                    <div>
+                        <span>예매번호</span>
+                        <strong>${escapeHtml(record.bookingNo || '-')}</strong>
+                    </div>
+                    <button
+                        class="admin-action-button cancel"
+                        type="button"
+                        data-admin-cancel-seat="${escapeHtml(record.seatId)}"
+                        data-admin-record-id="${escapeHtml(record.__recordId)}"
+                        data-admin-uid="${escapeHtml(record.__uid)}"
+                    >좌석 취소</button>
+                </article>
+            `).join('')}
         `;
         return;
     }
@@ -1196,6 +1394,10 @@ function renderAdminBookings() {
                 <div>
                     <span>전화번호</span>
                     <strong>${escapeHtml(booking.phone || booking.buyer.phone)}</strong>
+                </div>
+                <div>
+                    <span>예매번호</span>
+                    <strong>${escapeHtml(booking.bookingNo)}</strong>
                 </div>
                 <button class="admin-action-button cancel" type="button" data-booking-no="${escapeHtml(booking.bookingNo)}" data-admin-cancel-seat="${escapeHtml(seat.id)}">좌석 취소</button>
             </article>
@@ -1399,30 +1601,70 @@ function setupAccountEvents() {
 }
 
 function setupAdminEvents() {
-    adminForm.addEventListener('submit', event => {
+    adminForm.addEventListener('submit', async event => {
         event.preventDefault();
 
-        if (adminPin.value !== ADMIN_PIN) {
-            showToast('관리자 코드가 맞지 않습니다.');
+        if (!authApi || !adminFirebaseAuth) {
+            showToast('Firebase 연결 후 관리자 로그인을 사용할 수 있습니다.');
             return;
         }
 
-        adminUnlocked = true;
-        adminPanel.classList.remove('is-hidden');
-        adminPin.value = '';
-        renderAdminBookings();
-        showToast('관리자 모드를 열었습니다.');
+        const email = adminEmail.value.trim();
+        const password = adminPassword.value;
+        if (!email || !password) {
+            showToast('관리자 이메일과 비밀번호를 입력해 주세요.');
+            return;
+        }
+
+        setAdminStatus('관리자 로그인 중', 'loading');
+
+        try {
+            const credential = await authApi.signInWithEmailAndPassword(adminFirebaseAuth, email, password);
+            adminFirebaseUser = credential.user;
+            adminUnlocked = true;
+            adminAccessDenied = false;
+            adminPanel.classList.remove('is-hidden');
+            adminPassword.value = '';
+            await loadAdminBookings(true);
+        } catch (error) {
+            adminUnlocked = false;
+            adminFirebaseUser = null;
+            adminBookingRecords = [];
+            adminAccessDenied = false;
+            adminPanel.classList.add('is-hidden');
+            setAdminStatus(adminErrorMessage(error), 'error');
+            showToast('관리자 로그인에 실패했습니다.');
+        }
     });
 
-    adminLogout.addEventListener('click', () => {
+    adminLogout.addEventListener('click', async () => {
         adminUnlocked = false;
+        adminFirebaseUser = null;
+        adminBookingRecords = [];
+        adminAccessDenied = false;
         adminPanel.classList.add('is-hidden');
+        adminSearch.value = '';
+        if (adminFirebaseAuth?.currentUser) {
+            await authApi.signOut(adminFirebaseAuth);
+        }
+        setAdminStatus('관리자 로그아웃됨');
         updateFSM('home');
+        showToast('관리자 모드를 닫았습니다.');
+    });
+
+    adminSearch.addEventListener('input', renderAdminBookings);
+
+    adminRefresh.addEventListener('click', () => {
+        loadAdminBookings(true);
     });
 
     adminBookings.addEventListener('click', event => {
         const button = event.target.closest('button[data-admin-cancel-seat]');
         if (!button) return;
+        if (button.dataset.adminRecordId && button.dataset.adminUid) {
+            cancelAdminSeat(button.dataset.adminRecordId, button.dataset.adminCancelSeat, button.dataset.adminUid);
+            return;
+        }
         cancelSeat(button.dataset.bookingNo, button.dataset.adminCancelSeat);
     });
 }
